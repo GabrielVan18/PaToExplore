@@ -1,0 +1,2106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pato Explorer — Map Editor</title>
+<style>
+  /* ---------------------------------------------------------------------
+     Design tokens, lifted straight from the Pato Explorer game itself so
+     this tool feels like part of the same project instead of a generic
+     admin panel: dark ground fill (#2e3138), the exact grid-line color
+     the game already uses (#3a3d46), cream HUD text (#f5e2c8 / #fff8e7),
+     Georgia for titles (matches in-game headers), sans-serif for controls
+     (matches the in-game buttons/HUD).
+  --------------------------------------------------------------------- */
+  :root{
+    --bg:#1b1d21;
+    --panel:#232529;
+    --panel-alt:#2a2d33;
+    --canvas-bg:#2e3138;
+    --border:#3a3d46;
+    --text:#f5e2c8;
+    --text-bright:#fff8e7;
+    --text-dim:#9aa0aa;
+    --accent:#c24a38;      /* stall red — danger / delete / active */
+    --accent-2:#48934f;    /* leaf green — confirm / place */
+    --accent-3:#6fb0dd;    /* water highlight — informational */
+    --warn:#d9c08a;        /* sand — caution */
+    --radius:6px;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    font-size:13px;
+    display:flex;
+    flex-direction:column;
+    height:100vh;
+    overflow:hidden;
+  }
+  h1,h2,h3,.serif{font-family:Georgia,'Times New Roman',serif;}
+
+  /* ---------- topbar ---------- */
+  #topbar{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    flex-wrap:wrap;
+    padding:8px 12px;
+    background:var(--panel);
+    border-bottom:1px solid var(--border);
+    flex:0 0 auto;
+  }
+  #topbar h1{
+    font-size:16px;
+    color:var(--text-bright);
+    margin:0 10px 0 0;
+    white-space:nowrap;
+    letter-spacing:.2px;
+  }
+  #topbar h1 small{
+    display:block;
+    font-family:sans-serif;
+    font-size:10px;
+    color:var(--text-dim);
+    font-weight:normal;
+  }
+  .field{display:flex;align-items:center;gap:5px;}
+  .field label{color:var(--text-dim);font-size:11px;}
+  .field input[type=text],
+  .field input[type=number]{
+    width:56px;
+    background:var(--panel-alt);
+    border:1px solid var(--border);
+    color:var(--text);
+    border-radius:4px;
+    padding:4px 6px;
+    font-size:12px;
+  }
+  .field input[type=text].wide{width:130px;}
+  .field select{
+    background:var(--panel-alt);
+    border:1px solid var(--border);
+    color:var(--text);
+    border-radius:4px;
+    padding:4px 6px;
+    font-size:12px;
+    max-width:220px;
+  }
+  .field input[type=color]{
+    width:26px;height:26px;border:1px solid var(--border);border-radius:4px;background:none;padding:0;cursor:pointer;
+  }
+
+  button{
+    font-family:inherit;
+    font-size:12px;
+    color:var(--text);
+    background:var(--panel-alt);
+    border:1px solid var(--border);
+    border-radius:4px;
+    padding:6px 10px;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  button:hover{border-color:var(--text-dim);}
+  button:active{transform:translateY(1px);}
+  button.primary{background:#3d5a3f;border-color:#4c7550;color:#e9f5ea;}
+  button.primary:hover{border-color:var(--accent-2);}
+  button.danger{background:#4a2a24;border-color:#6b3a30;color:#ffe0da;}
+  button.danger:hover{border-color:var(--accent);}
+  button.ghost{background:transparent;}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+
+  .modegroup{display:flex;border:1px solid var(--border);border-radius:5px;overflow:hidden;}
+  .modegroup button{border:none;border-radius:0;border-right:1px solid var(--border);}
+  .modegroup button:last-child{border-right:none;}
+  .modegroup button.active{background:#4a3f2a;color:var(--text-bright);}
+  .modegroup button.active.testing{background:#3d5a3f;color:#e9f5ea;}
+
+  #spacer{flex:1;}
+
+  /* ---------- main layout ---------- */
+  #main{flex:1 1 auto;display:flex;min-height:0;}
+
+  #left,#right{
+    flex:0 0 208px;
+    background:var(--panel);
+    border-right:1px solid var(--border);
+    overflow-y:auto;
+    padding:10px;
+  }
+  #right{border-right:none;border-left:1px solid var(--border);}
+
+  .panel-title{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.6px;
+    color:var(--text-dim);
+    margin:14px 0 6px;
+  }
+  .panel-title:first-child{margin-top:0;}
+
+  .swatch{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:6px 7px;
+    border:1px solid var(--border);
+    border-radius:5px;
+    margin-bottom:5px;
+    cursor:pointer;
+    background:var(--panel-alt);
+    user-select:none;
+  }
+  .swatch:hover{border-color:var(--text-dim);}
+  .swatch.active{border-color:var(--warn);background:#3a3020;}
+  .swatch .chip{
+    width:22px;height:22px;border-radius:4px;flex:0 0 auto;
+    border:1px solid rgba(0,0,0,.35);
+    position:relative;
+  }
+  .swatch .chip.solid::after{
+    content:"✕";
+    position:absolute;inset:0;
+    display:flex;align-items:center;justify-content:center;
+    font-size:10px;color:rgba(255,255,255,.85);text-shadow:0 0 2px #000;
+  }
+  .swatch .meta{flex:1;min-width:0;}
+  .swatch .meta .name{font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .swatch .meta .sub{font-size:10px;color:var(--text-dim);}
+  .swatch .id{font-size:10px;color:var(--text-dim);width:14px;text-align:center;}
+
+  .obj-swatch{cursor:grab;}
+  .obj-swatch:active{cursor:grabbing;}
+  .obj-swatch .chip{display:flex;align-items:center;justify-content:center;font-size:12px;}
+
+  .addbox{
+    border:1px dashed var(--border);
+    border-radius:5px;
+    padding:8px;
+    margin-top:6px;
+  }
+  .addbox .row{display:flex;gap:5px;align-items:center;margin-bottom:5px;}
+  .addbox input[type=text]{
+    flex:1;min-width:0;background:var(--panel-alt);border:1px solid var(--border);
+    color:var(--text);border-radius:4px;padding:4px 6px;font-size:11px;
+  }
+  .addbox label{font-size:10px;color:var(--text-dim);display:flex;align-items:center;gap:4px;}
+  .hint{font-size:10.5px;color:var(--text-dim);line-height:1.5;margin-top:4px;}
+
+  /* ---------- canvas area ---------- */
+  #canvasWrap{
+    flex:1;
+    overflow:auto;
+    background:
+      linear-gradient(45deg,#202226 25%,transparent 25%),
+      linear-gradient(-45deg,#202226 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,#202226 75%),
+      linear-gradient(-45deg,transparent 75%,#202226 75%);
+    background-size:20px 20px;
+    background-position:0 0,0 10px,10px -10px,-10px 0px;
+    background-color:#16171a;
+    padding:24px;
+  }
+  #gameContainer{display:inline-block;box-shadow:0 6px 24px rgba(0,0,0,.5);}
+
+  /* ---------- inspector / status ---------- */
+  #inspector .empty{color:var(--text-dim);font-size:11.5px;line-height:1.6;}
+  #inspector .irow{margin-bottom:8px;}
+  #inspector .irow label{display:block;font-size:10px;color:var(--text-dim);margin-bottom:3px;}
+  #inspector .irow input[type=text],
+  #inspector .irow input[type=number]{
+    width:100%;background:var(--panel-alt);border:1px solid var(--border);color:var(--text);
+    border-radius:4px;padding:5px 6px;font-size:12px;box-sizing:border-box;
+  }
+  #inspector .coords{font-size:11px;color:var(--text-dim);}
+  #inspector .checkrow{display:flex;align-items:center;gap:6px;font-size:12px;}
+  #inspector .sizerow{display:flex;gap:8px;}
+  #inspector .sizerow > div{flex:1;}
+
+  #statusbar{
+    flex:0 0 auto;
+    display:flex;
+    gap:18px;
+    align-items:center;
+    padding:5px 12px;
+    background:var(--panel);
+    border-top:1px solid var(--border);
+    font-size:11px;
+    color:var(--text-dim);
+  }
+  #statusbar b{color:var(--text);}
+  #toast{
+    position:fixed;
+    bottom:44px;left:50%;
+    transform:translateX(-50%) translateY(10px);
+    background:#2a2d33;
+    border:1px solid var(--border);
+    color:var(--text-bright);
+    padding:8px 16px;
+    border-radius:6px;
+    font-size:12px;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .18s ease, transform .18s ease;
+    z-index:50;
+    box-shadow:0 4px 16px rgba(0,0,0,.4);
+  }
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  /* ---------- modal ---------- */
+  .modal-backdrop{
+    position:fixed;inset:0;background:rgba(0,0,0,.55);
+    display:none;align-items:center;justify-content:center;z-index:100;
+  }
+  .modal-backdrop.show{display:flex;}
+  .modal{
+    background:var(--panel);border:1px solid var(--border);border-radius:8px;
+    width:min(640px,92vw);max-height:82vh;display:flex;flex-direction:column;
+    box-shadow:0 10px 40px rgba(0,0,0,.6);
+  }
+  .modal-head{display:flex;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border);}
+  .modal-head h2{margin:0;font-size:14px;color:var(--text-bright);}
+  .modal-head .close{margin-left:auto;}
+  .modal-body{padding:12px 14px;overflow:auto;}
+  .modal-foot{display:flex;gap:8px;justify-content:flex-end;padding:10px 14px;border-top:1px solid var(--border);}
+  .tabs{display:flex;gap:4px;margin-bottom:8px;}
+  .tabs button{border-radius:4px 4px 0 0;}
+  .tabs button.active{background:var(--panel-alt);border-bottom-color:var(--panel-alt);color:var(--text-bright);}
+  textarea.code{
+    width:100%;height:280px;resize:vertical;
+    background:#151619;color:#d8e8d8;border:1px solid var(--border);border-radius:5px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;
+    padding:10px;line-height:1.5;
+  }
+  .confirm-body{font-size:12.5px;line-height:1.6;color:var(--text);}
+
+  .pick-group-title{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin:12px 0 6px;}
+  .pick-group-title:first-child{margin-top:0;}
+  .pick-grid{display:flex;flex-wrap:wrap;gap:6px;}
+  .pick-item{
+    width:42px;height:42px;border:1px solid var(--border);border-radius:5px;cursor:pointer;
+    background:var(--panel-alt);display:flex;align-items:center;justify-content:center;overflow:hidden;padding:3px;
+  }
+  .pick-item:hover{border-color:var(--warn);}
+  .pick-item img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated;}
+
+  .swatch .meta .sub.tile-solid-toggle{display:flex;align-items:center;gap:4px;cursor:pointer;}
+  .swatch .meta .sub.tile-solid-toggle input{width:11px;height:11px;margin:0;cursor:pointer;flex:0 0 auto;}
+</style>
+</head>
+<body>
+
+  <div id="topbar">
+    <h1>Pato Explorer<small>MAP &amp; OBJECT EDITOR</small></h1>
+
+    <div class="field">
+      <label>Name</label>
+      <input type="text" id="mapName" class="wide" value="new_map">
+    </div>
+    <div class="field">
+      <label>Cols</label>
+      <input type="number" id="colsInput" min="4" max="200" value="30">
+    </div>
+    <div class="field">
+      <label>Rows</label>
+      <input type="number" id="rowsInput" min="4" max="200" value="16">
+    </div>
+    <button id="resizeBtn">Resize</button>
+    <button id="newMapBtn" class="ghost">New</button>
+
+    <div class="field">
+      <label>Template</label>
+      <select id="templateSelect">
+        <option value="">— Load a chapter map —</option>
+        <option value="prologue">Prologue — Town Plaza</option>
+        <option value="chapter1">Chapter 1 — The River Remembers</option>
+        <option value="chapter2">Chapter 2 — Old Town</option>
+        <option value="chapter3">Chapter 3 — Historical Area</option>
+        <option value="chapter4">Chapter 4 — Duck Yard</option>
+        <option value="chapter5">Chapter 5 — Heritage Square</option>
+      </select>
+    </div>
+
+    <div class="modegroup" id="modeGroup">
+      <button data-mode="tiles" class="active">Tiles</button>
+      <button data-mode="objects">Objects</button>
+      <button data-mode="spawn">Spawn</button>
+      <button data-mode="test">▶ Test Walk</button>
+    </div>
+
+    <label class="field"><input type="checkbox" id="gridToggle" checked> Grid</label>
+    <button id="undoBtn" title="Ctrl+Z">↺ Undo</button>
+
+    <div id="spacer"></div>
+
+    <button id="loadBtn">Load JSON…</button>
+    <input type="file" id="fileInput" accept="application/json,.json" style="display:none">
+    <button id="exportBtn" class="primary">Export ▾</button>
+  </div>
+
+  <div id="main">
+    <div id="left">
+      <div id="tilesPalette">
+        <div class="panel-title">Tile Palette (paint)</div>
+        <div id="tileSwatches"></div>
+        <div class="addbox" id="addTileBox">
+          <button id="openTilePickerBtn" style="width:100%;">+ Add tile from tileset…</button>
+          <div class="hint">Browse every tile image under assets/src and add one as a new tile type. Tile IDs are single digits (0–9) to match the game's map-string format — up to 10 tile types total.</div>
+        </div>
+      </div>
+
+<div id="objectsPalette" style="display:none;">
+         <div class="panel-title">Object Palette (drag or click, then click map)</div>
+         <div id="objectSwatches"></div>
+         <div class="addbox">
+           <div class="row">
+             <button id="addObjFromAssetBtn">Select Image</button>
+             <input type="file" id="assetFileInput" accept="image/*" style="display:none;">
+           </div>
+           <div class="row">
+             <input type="text" id="newObjName" placeholder="new object name">
+           </div>
+           <div class="row">
+             <input type="text" id="newObjGlyph" placeholder="emoji" style="flex:0 0 46px;text-align:center;">
+             <input type="color" id="newObjColor" value="#8a5a3a">
+             <label><input type="checkbox" id="newObjSolid" checked> blocks</label>
+           </div>
+           <button id="addObjBtn" style="width:100%;">+ Add object type (manual)</button>
+         </div>
+       </div>
+
+      <div id="spawnPalette" style="display:none;">
+        <div class="panel-title">Player Spawn</div>
+        <div class="hint">Click anywhere on the map to move the spawn marker (★). This becomes the player's starting x/y in your exported code.</div>
+      </div>
+
+      <div id="testPalette" style="display:none;">
+        <div class="panel-title">Test Walk</div>
+        <div class="hint">Move with WASD or arrow keys. Your character collides with every solid tile and every object marked "blocks walking" — exactly like <code>loadMap()</code> + <code>physics.add.collider</code> in the real game.</div>
+      </div>
+    </div>
+
+    <div id="canvasWrap">
+      <div id="gameContainer"></div>
+    </div>
+
+    <div id="right">
+      <div class="panel-title">Inspector</div>
+      <div id="inspector"><div class="empty">Select an object on the map (in Objects mode) to edit its name and collision here.</div></div>
+    </div>
+  </div>
+
+  <div id="statusbar">
+    <span>Cell: <b id="stCell">–</b></span>
+    <span>Tool: <b id="stTool">Grass</b></span>
+    <span>Objects: <b id="stObjCount">0</b></span>
+    <span>Map: <b id="stSize">30 × 16</b></span>
+  </div>
+
+  <div id="toast"></div>
+
+  <!-- Export modal -->
+  <div class="modal-backdrop" id="exportModal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Export map</h2>
+        <button class="close ghost ex-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="tabs">
+          <button data-tab="json" class="active">config.json</button>
+          <button data-tab="js">JS snippet</button>
+        </div>
+        <textarea class="code" id="exportJson" readonly></textarea>
+        <textarea class="code" id="exportJs" readonly style="display:none;"></textarea>
+      </div>
+      <div class="modal-foot">
+        <button id="copyExportBtn" class="primary">Copy</button>
+        <button id="downloadJsonBtn">Download .json</button>
+        <button id="downloadJsBtn">Download .js</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm modal (used instead of window.confirm, which artifacts sandbox) -->
+  <div class="modal-backdrop" id="confirmModal">
+    <div class="modal" style="width:min(380px,90vw);">
+      <div class="modal-head"><h2 id="confirmTitle">Are you sure?</h2></div>
+      <div class="modal-body"><div class="confirm-body" id="confirmBody"></div></div>
+      <div class="modal-foot">
+        <button id="confirmCancel" class="ghost">Cancel</button>
+        <button id="confirmOk" class="danger">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tile picker modal: every tile image under assets/src -->
+  <div class="modal-backdrop" id="tilePickerModal">
+    <div class="modal" style="width:min(560px,92vw);">
+      <div class="modal-head">
+        <h2>Add a tile from the tileset</h2>
+        <button class="close ghost tp-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="field" style="margin-bottom:10px;">
+          <input type="checkbox" id="tpSolid">
+          <span style="color:var(--text-dim);font-size:11px;">New tile blocks walking</span>
+        </label>
+        <div id="tilePickerGrid"></div>
+      </div>
+    </div>
+  </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
+<script>
+/* =========================================================================
+   PATO EXPLORER — MAP & OBJECT EDITOR
+   Plain HTML/CSS/JS + Phaser 3 (same 3.70.0 build the game itself loads).
+   No build step, no server: open the file and go.
+
+   Ported straight from js/mapLoader.js: TILE_SIZE, the tile legend, and the
+   hand-painted Graphics textures (grass/water/sand/path/tree/wall + the
+   water shoreline foam) are the SAME functions used in-game, so what you
+   paint here is what you'll actually see once loadMap() renders it.
+   ========================================================================= */
+
+const TILE_SIZE = 32;
+const TILE_VARIANTS = 3;
+const MAX_TILE_TYPES = 10; // single-digit IDs only — see mapLoader.js's `.split('').map(Number)`
+
+// ---- deterministic "randomness" (verbatim from mapLoader.js) -------------
+function mulberry32(seed){
+  let a = seed >>> 0;
+  return function(){
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function hashInt(...vals){
+  let h = 2166136261;
+  for (const v of vals){ h ^= v; h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function hashString(str){
+  let h = 0;
+  for (let i=0;i<str.length;i++) h = (Math.imul(h,31) + str.charCodeAt(i)) | 0;
+  return h >>> 0;
+}
+
+// ---- per-tile-type painters (verbatim from mapLoader.js) -----------------
+function drawGrass(g, rand){
+  g.fillStyle(0x3a6b45,1).fillRect(0,0,TILE_SIZE,TILE_SIZE);
+  for (let i=0;i<4;i++){
+    g.fillStyle(rand()>0.5?0x4c8a55:0x2f5838,0.5);
+    const w=6+rand()*9,h=5+rand()*7;
+    g.fillRect(rand()*(TILE_SIZE-w),rand()*(TILE_SIZE-h),w,h);
+  }
+  g.lineStyle(1,0x1f3a28,0.85);
+  for (let i=0;i<6;i++){
+    const x=2+rand()*(TILE_SIZE-4), y=8+rand()*(TILE_SIZE-12);
+    g.beginPath(); g.moveTo(x,y+6); g.lineTo(x+(rand()-0.5)*5,y); g.strokePath();
+  }
+}
+function drawWater(g, rand){
+  g.fillStyle(0x2e5f8a,1).fillRect(0,0,TILE_SIZE,TILE_SIZE);
+  g.fillStyle(0x234a6e,0.5); g.fillRect(0,TILE_SIZE*0.55,TILE_SIZE,TILE_SIZE*0.45);
+  g.lineStyle(2,0x6fb0dd,0.5);
+  for (let i=0;i<2;i++){
+    const y=6+rand()*(TILE_SIZE-12);
+    g.beginPath();
+    g.moveTo(2,y); g.lineTo(TILE_SIZE*0.35,y+3); g.lineTo(TILE_SIZE*0.65,y-3); g.lineTo(TILE_SIZE-2,y);
+    g.strokePath();
+  }
+}
+function drawSand(g, rand){
+  g.fillStyle(0xd9c08a,1).fillRect(0,0,TILE_SIZE,TILE_SIZE);
+  for (let i=0;i<10;i++){
+    g.fillStyle(rand()>0.5?0xe8d9a8:0xc2a869,0.6);
+    g.fillCircle(rand()*TILE_SIZE, rand()*TILE_SIZE, 1+rand());
+  }
+}
+function drawPath(g, rand){
+  g.fillStyle(0x6b4f30,1).fillRect(0,0,TILE_SIZE,TILE_SIZE);
+  for (let i=0;i<4;i++){
+    g.fillStyle(rand()>0.5?0x8a6b45:0x543c22,0.5);
+    const w=6+rand()*8,h=5+rand()*7;
+    g.fillRect(rand()*(TILE_SIZE-w),rand()*(TILE_SIZE-h),w,h);
+  }
+  g.fillStyle(0x3f2c18,0.6);
+  for (let i=0;i<3;i++) g.fillCircle(rand()*TILE_SIZE, rand()*TILE_SIZE, 1+rand());
+}
+function drawTree(g, rand){
+  g.fillStyle(0x3a6b45,1).fillRect(0,0,TILE_SIZE,TILE_SIZE);
+  const cx = TILE_SIZE/2 + (rand()-0.5)*2;
+  g.fillStyle(0x000000,0.18); g.fillEllipse(cx, TILE_SIZE-5, TILE_SIZE*0.5, 6);
+  g.fillStyle(0x4a3420,1); g.fillRect(cx-2.5, TILE_SIZE-12, 5, 9);
+  g.fillStyle(0x1f3f27,1); g.fillCircle(cx, TILE_SIZE*0.42, TILE_SIZE*0.42);
+  g.fillStyle(0x2f6a38,1); g.fillCircle(cx-3, TILE_SIZE*0.36, TILE_SIZE*0.32);
+  g.fillStyle(0x48934f,1); g.fillCircle(cx+4, TILE_SIZE*0.3, TILE_SIZE*0.2);
+}
+function drawWall(g, rand){
+  g.fillStyle(0x7a5a42,1).fillRect(0,0,TILE_SIZE,TILE_SIZE);
+  g.lineStyle(1,0x4a3624,0.8);
+  const rowH = TILE_SIZE/3;
+  for (let row=0; row<=3; row++) g.lineBetween(0,row*rowH,TILE_SIZE,row*rowH);
+  for (let row=0; row<3; row++){
+    const offset = row%2===0 ? 0 : TILE_SIZE/2;
+    g.lineBetween(offset,row*rowH,offset,(row+1)*rowH);
+    g.lineBetween(offset+TILE_SIZE,row*rowH,offset+TILE_SIZE,(row+1)*rowH);
+  }
+  g.fillStyle(0x8f6c50,0.4);
+  for (let i=0;i<3;i++) g.fillRect(rand()*TILE_SIZE, rand()*TILE_SIZE, 4, 2);
+}
+function drawFlat(g, rand, type){ g.fillStyle(type.color,1).fillRect(0,0,TILE_SIZE,TILE_SIZE); }
+
+const BUILTIN_DRAWERS = { grass:drawGrass, tree:drawTree, water:drawWater, path:drawPath, sand:drawSand, wall:drawWall };
+
+// ---------------------------------------------------------------------
+// ASSET CATALOG — every tile/object image under assets/src that the
+// editor knows about. preload() loads all of it up front, and both
+// sidebar palettes are generated straight from these same two arrays,
+// so nothing about the art needs to be hand-maintained in two places.
+// ---------------------------------------------------------------------
+const TILE_LIBRARY = [];
+for (let i=1;i<=64;i++){
+  const num = String(i).padStart(2,'0');
+  TILE_LIBRARY.push({ key:`fieldsTile_${num}`, path:`assets/src/1 Tiles/FieldsTile_${num}.png`, group:'Fields Tileset' });
+}
+// NOTE: assets/src/1.1 Tiles (Tile2_01..64) used to be listed here too, but
+// every one of those images is mostly-transparent wooden fence/gate pickets
+// (checked: 8%-90% transparent pixels each), not a flat opaque ground tile
+// like the Fields set (0% transparent). Using one as a base tile left the
+// dark canvas showing through the gaps between pickets — that's the black
+// background. They're moved into OBJECT_LIBRARY as a "Fence" category
+// below instead, to be placed on top of a ground tile like any other object.
+// assets/src/11 Ground Paths — 16 flat dirt/cobblestone/brick ground tiles
+// cropped from a supplementary reference sheet (paths, no grass blending).
+for (let i=1;i<=16;i++){
+  const num = String(i).padStart(2,'0');
+  TILE_LIBRARY.push({ key:`groundPath_${num}`, path:`assets/src/11 Ground Paths/GroundPath_${num}.png`, group:'Ground Paths' });
+}
+// assets/src/12 Grass Path Blends — 16 tiles blending grass into a paved/
+// gravel path, useful as edge tiles around the Ground Paths set above.
+for (let i=1;i<=16;i++){
+  const num = String(i).padStart(2,'0');
+  TILE_LIBRARY.push({ key:`grassPathBlend_${num}`, path:`assets/src/12 Grass Path Blends/GrassPathBlend_${num}.png`, group:'Grass Path Blends' });
+}
+// assets/src/13 Path Grass Blends 2 — a second, larger set of grass/path
+// edge-blend tiles (22 total). Heads up: the source reference sheet had a
+// 23rd and 24th cell in this grid that turned out to be one wide
+// Philippines-flag graphic spanning both cells (a stray artifact of the
+// AI-generated reference image, not an actual tile) — both were skipped
+// rather than imported.
+for (let i=1;i<=22;i++){
+  const num = String(i).padStart(2,'0');
+  TILE_LIBRARY.push({ key:`pathGrassBlend2_${num}`, path:`assets/src/13 Path Grass Blends 2/PathGrassBlend2_${num}.png`, group:'Path Grass Blends 2' });
+}
+// assets/src/14 Special Ground Patterns — 3 decorative paved-courtyard
+// patterns (celtic-knot brick, diamond brick, herringbone brick).
+for (let i=1;i<=3;i++){
+  const num = String(i).padStart(2,'0');
+  TILE_LIBRARY.push({ key:`specialGround_${num}`, path:`assets/src/14 Special Ground Patterns/SpecialGround_${num}.png`, group:'Special Ground Patterns' });
+}
+const TILE_PATH_BY_KEY = Object.fromEntries(TILE_LIBRARY.map(t=>[t.key,t.path]));
+
+// 2 Objects/<folder>/<1..count>.png — every craftpix object icon. Solid
+// defaults are just a starting guess (decor/shadow/grass/stone don't block,
+// box/tent/house do); the "blocks walking" checkbox on each placed object
+// in the Inspector can always override it per-instance.
+const OBJECT_FOLDERS = [
+  { group:'Shadow', base:'assets/src/2 Objects', folder:'1 Shadow', count:6,  prefix:'shadow', solid:false },
+  { group:'Stone',  base:'assets/src/2 Objects', folder:'2 Stone',  count:6,  prefix:'stone',  solid:false },
+  { group:'Decor',  base:'assets/src/2 Objects', folder:'3 Decor',  count:17, prefix:'decor',  solid:false },
+  { group:'Box',    base:'assets/src/2 Objects', folder:'4 Box',    count:5,  prefix:'box',    solid:true  },
+  { group:'Grass',  base:'assets/src/2 Objects', folder:'5 Grass',  count:6,  prefix:'grass',  solid:false },
+  { group:'Tent',   base:'assets/src/2 Objects', folder:'6 Tent',   count:4,  prefix:'tent',   solid:true  },
+  { group:'House',  base:'assets/src/2 Objects', folder:'7 House',  count:4,  prefix:'house',  solid:true  },
+  // Cropped from a supplementary town-props reference sheet. Solid defaults:
+  // bench/lamp/fountain/border block walking (you'd bump into them), potted
+  // vegetation doesn't (matches the existing Grass/Plants convention).
+  // NOTE ON SCALE: this reference sheet was drawn at a noticeably higher
+  // pixel-per-tile density than the rest of the pack (e.g. a house in
+  // "7 House" is ~116px wide and reads as a believable multi-tile building,
+  // but a bench here is ~87px wide — almost as wide as a house — because it
+  // was drawn bigger relative to its subject, not because it's a bigger
+  // object). Placed at native 1:1 size that made every item from this sheet
+  // look oversized next to everything else. `scale` is applied on top of the
+  // native pixel size in getNaturalSize() below to bring these back in line;
+  // still just a starting default; every placed object's width/height stays
+  // freely resizable from the Inspector afterwards.
+  { group:'Bench',      base:'assets/src/2 Objects', folder:'8 Bench',      count:4, prefix:'bench',      solid:true,  scale:0.7 },
+  { group:'Lamp',       base:'assets/src/2 Objects', folder:'9 Lamp',       count:1, prefix:'lamp',       solid:true,  scale:0.7 },
+  { group:'Fountain',   base:'assets/src/2 Objects', folder:'10 Fountain',  count:1, prefix:'fountain',   solid:true,  scale:0.7 },
+  { group:'Vegetation', base:'assets/src/2 Objects', folder:'11 Vegetation',count:4, prefix:'vegetation', solid:false, scale:0.7 },
+  { group:'Border',     base:'assets/src/2 Objects', folder:'12 Border',    count:8, prefix:'border',     solid:true,  scale:0.7 },
+  { group:'Building',   base:'assets/src/2 Objects', folder:'13 Building', count:2, prefix:'building',   solid:true,  scale:0.7 },
+  // Cropped from the extra sprite sheets — each was split automatically by
+  // finding every separate non-transparent blob in the sheet, so a couple
+  // of "clusters" (e.g. a multi-crate stall display in Supplies) came out
+  // as one combined piece on purpose, same as the sheet drew them.
+  { group:'Plants',       base:'assets/src', folder:'4 Plants',        count:152, prefix:'plant',       solid:false },
+  { group:'Supplies',     base:'assets/src', folder:'5 Supplies',      count:76,  prefix:'supply',      solid:true  },
+  { group:'Road1 Grass',  base:'assets/src', folder:'6 Road1 Grass',   count:15,  prefix:'road1grass',  solid:false },
+  { group:'Road1 Ground', base:'assets/src', folder:'7 Road1 Ground',  count:15,  prefix:'road1ground', solid:false },
+  { group:'Road2',        base:'assets/src', folder:'8 Road2',         count:15,  prefix:'road2',       solid:false },
+  { group:'Road2 Grass',  base:'assets/src', folder:'9 Road2 Grass',   count:15,  prefix:'road2grass',  solid:false },
+  { group:'Road2 Ground', base:'assets/src', folder:'10 Road2 Ground', count:15,  prefix:'road2ground', solid:false }
+];
+const OBJECT_LIBRARY = [];
+OBJECT_FOLDERS.forEach(spec=>{
+  for (let i=1;i<=spec.count;i++){
+    OBJECT_LIBRARY.push({
+      key:`obj_${spec.prefix}_${i}`,
+      path:`${spec.base}/${spec.folder}/${i}.png`,
+      group:spec.group,
+      name:`${spec.group} ${i}`,
+      solid:spec.solid,
+      scale:spec.scale ?? 1
+    });
+  }
+});
+OBJECT_LIBRARY.push({ key:'obj_towerspot1', path:'assets/src/2 Objects/PlaceForTower1.png', group:'Tower Spot', name:'Tower Spot A', solid:false });
+OBJECT_LIBRARY.push({ key:'obj_towerspot2', path:'assets/src/2 Objects/PlaceForTower2.png', group:'Tower Spot', name:'Tower Spot B', solid:false });
+// assets/src/1.1 Tiles (Tile2_01..64) — wooden fence/gate pickets. These
+// have big transparent gaps by design (see the note above TILE_LIBRARY),
+// so they belong here as objects you drop on top of a ground tile, not as
+// a base tile themselves.
+for (let i=1;i<=64;i++){
+  const num = String(i).padStart(2,'0');
+  OBJECT_LIBRARY.push({
+    key:`obj_fence_${num}`,
+    path:`assets/src/1.1 Tiles/Tile2_${num}.png`,
+    group:'Fence',
+    name:`Fence ${num}`,
+    solid:true
+  });
+}
+// Note: assets/src/3 Animated Objects (Door1/2, DoubleDoor1/2) are horizontal
+// sprite-sheet strips (several animation frames baked into one image), not
+// single stand-alone icons — dropping one straight into the object palette
+// would just show the whole frame strip squashed into a box, so those are
+// left out here. Wire them up as sprite-sheet animations in the game itself
+// instead of as static map-editor objects.
+const OBJECT_PATH_BY_KEY = Object.fromEntries(OBJECT_LIBRARY.map(o=>[o.key,o.path]));
+
+// Default legend. Heads up: assets/src/1 Tiles (FieldsTileset) turns out to
+// be a single dirt/cobblestone-path autotile set with grass bleeding in at
+// the edges in various combinations — not six separate grass/tree/water/
+// sand/wall textures. Checked every one of the 64 tiles: only #38 is pure
+// grass (100% green) and #1 is pure dirt (0% green) with no other material
+// in the sheet at all. So only grass/path get real art here; tree/water/
+// sand/wall have no matching image to point at and fall back to the
+// hand-painted procedural textures below (same ones js/mapLoader.js uses
+// in the actual game) instead of showing the wrong picture.
+function defaultTileTypes(){
+   return {
+     0:{name:'grass',color:0x3a6b45,solid:false,imageKey:'fieldsTile_38'},
+     1:{name:'tree', color:0x1f3f27,solid:true, noFlipY:true},
+     2:{name:'water',color:0x2e5f8a,solid:true},
+     3:{name:'path', color:0x6b4f30,solid:false,imageKey:'fieldsTile_01'},
+     4:{name:'sand', color:0xd9c08a,solid:false},
+     5:{name:'wall', color:0x7a5a42,solid:true}
+   };
+ }
+// Auto-populated from every image in assets/src/2 Objects — see OBJECT_LIBRARY above.
+function defaultObjectTypes(){
+  const types = {};
+  OBJECT_LIBRARY.forEach(o=>{
+    types[o.key] = { name:o.name, group:o.group, imageKey:o.key, solid:o.solid, color:0x888888, scale:o.scale ?? 1 };
+  });
+  return types;
+}
+
+function toCss(colorNum){ return '#' + colorNum.toString(16).padStart(6,'0'); }
+function toColorNum(css){ return parseInt(css.replace('#',''),16); }
+function slugify(s){
+  return s.toLowerCase().trim().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'') || 'obj';
+}
+
+// ---------------------------------------------------------------------
+// STATE — everything the UI reads/writes lives here. Phaser just renders
+// whatever this object currently says.
+// ---------------------------------------------------------------------
+const state = {
+  name: 'new_map',
+  cols: 30,
+  rows: 16,
+  tiles: [],           // 2D array [row][col] of small ints
+  tileTypes: defaultTileTypes(),
+  objectTypes: defaultObjectTypes(),
+  objects: [],          // { id, key, name, col, row, x, y, w, h, color, collidable, info }
+  spawn: { col: 15, row: 8 },
+  mode: 'tiles',
+  activeTile: 0,
+  activeObjectType: 'obj_house_1',
+  showGrid: true,
+  nextObjId: 1
+};
+
+function makeBlankTiles(cols, rows, borderTile){
+  const grid = [];
+  for (let r=0;r<rows;r++){
+    const row = [];
+    for (let c=0;c<cols;c++){
+      const isBorder = borderTile!=null && (r===0||c===0||r===rows-1||c===cols-1);
+      row.push(isBorder ? borderTile : 0);
+    }
+    grid.push(row);
+  }
+  return grid;
+}
+state.tiles = makeBlankTiles(state.cols, state.rows, 1);
+
+// ---------------------------------------------------------------------
+// UNDO — snapshot before any destructive action; Ctrl+Z (or the button)
+// restores the previous snapshot and rebuilds the grid.
+// ---------------------------------------------------------------------
+const undoStack = [];
+function snapshot(){
+  undoStack.push(JSON.stringify({tiles:state.tiles, objects:state.objects, spawn:state.spawn}));
+  if (undoStack.length>50) undoStack.shift();
+}
+function undo(){
+  if (!undoStack.length){ toast('Nothing to undo'); return; }
+  const s = JSON.parse(undoStack.pop());
+  state.tiles = s.tiles; state.objects = s.objects; state.spawn = s.spawn;
+  if (window.editorScene) window.editorScene.rebuildAll();
+  refreshInspector();
+  toast('Undid last change');
+}
+
+// ---------------------------------------------------------------------
+// TOAST + CONFIRM (native alert/confirm are unreliable inside sandboxed
+// artifact iframes, so the tool rolls its own of both).
+// ---------------------------------------------------------------------
+let toastTimer=null;
+function toast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.remove('show'), 1800);
+}
+function confirmDialog(title, body, onConfirm){
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmBody').textContent = body;
+  const backdrop = document.getElementById('confirmModal');
+  backdrop.classList.add('show');
+  const okBtn = document.getElementById('confirmOk');
+  const cancelBtn = document.getElementById('confirmCancel');
+  function cleanup(){ backdrop.classList.remove('show'); okBtn.onclick=null; cancelBtn.onclick=null; }
+  okBtn.onclick = ()=>{ cleanup(); onConfirm(); };
+  cancelBtn.onclick = cleanup;
+}
+
+/* =========================================================================
+   PHASER SCENE
+   ========================================================================= */
+class EditorScene extends Phaser.Scene {
+  constructor(){ super('Editor'); }
+
+  preload() {
+    // Every tile in both tilesets (assets/src/1 Tiles + 1.1 Tiles) and every
+    // object icon (assets/src/2 Objects) — see TILE_LIBRARY / OBJECT_LIBRARY
+    // above. This is the single place both sidebar palettes' art comes from.
+    TILE_LIBRARY.forEach(t => this.load.image(t.key, t.path));
+    OBJECT_LIBRARY.forEach(o => this.load.image(o.key, o.path));
+    // Full tileset strips too, in case something needs the whole sheet.
+    this.load.image('fieldsTileset', 'assets/src/1 Tiles/FieldsTileset.png');
+    this.load.image('tileset2', 'assets/src/1.1 Tiles/Tileset2.png');
+
+    // Hiraya's spritesheet, loaded permanently (same key/path/frame size as
+    // PreloadScene.js in the actual game) so Test Walk always previews the
+    // real playable character instead of a placeholder box.
+    this.load.spritesheet('hiraya-sheet', 'assets/sprites/hiraya-sheet.png', { frameWidth: 44, frameHeight: 78 });
+
+    this.load.on('loaderror', (file) => {
+      console.warn('Map editor: failed to load', file.key, file.src);
+    });
+  }
+
+  create(){
+    window.editorScene = this;
+    this.tileImgs = [];       // [row][col] -> Image game object
+    this.objSprites = {};     // id -> {rect, label}
+    this.dragCandidate = null;
+    this.lastPaintedCell = null;
+    this.isPointerDown = false;
+    this.eraseMode = false;
+
+    this.shoreGfx = this.add.graphics().setDepth(2);
+    this.gridGfx = this.add.graphics().setDepth(3);
+    this.hoverRect = this.add.rectangle(0,0,TILE_SIZE,TILE_SIZE)
+      .setStrokeStyle(2, 0xfff8e7, 0.9).setDepth(10).setVisible(false);
+    this.spawnMarker = this.add.text(0,0,'★',{fontSize:22,color:'#ffe27a'})
+      .setOrigin(0.5).setDepth(6).setShadow(1,1,'#000000cc',3,true,true);
+
+    this.tester = null;
+    this.testColliders = [];
+    this.testKeys = null;
+
+    this.rebuildAll();
+
+    // ---- global pointer handling -----------------------------------
+    this.input.on('pointerdown', (pointer)=>{
+      if (state.mode==='test') return;
+      const cell = this.pointerToCell(pointer);
+      if (!cell) return;
+
+      if (state.mode==='tiles'){
+        this.isPointerDown = true;
+        this.eraseMode = pointer.rightButtonDown();
+        snapshot();
+        this.paintCell(cell.col, cell.row, this.eraseMode ? 0 : state.activeTile);
+        this.lastPaintedCell = cell;
+      } else if (state.mode==='objects'){
+        const hits = this.input.hitTestPointer(pointer);
+        const hitObj = hits.find(h=>h.getData && h.getData('objId'));
+        if (hitObj){
+          selectObject(hitObj.getData('objId'));
+        } else {
+          snapshot();
+          placeObject(state.activeObjectType, cell.col, cell.row);
+          selectObject(state.nextObjId-1);
+        }
+      } else if (state.mode==='spawn'){
+        snapshot();
+        setSpawn(cell.col, cell.row);
+      }
+    });
+
+    this.input.on('pointermove', (pointer)=>{
+      const cell = this.pointerToCell(pointer);
+      if (cell && state.mode!=='test'){
+        this.hoverRect.setPosition(cell.col*TILE_SIZE+TILE_SIZE/2, cell.row*TILE_SIZE+TILE_SIZE/2).setVisible(true);
+        document.getElementById('stCell').textContent = `${cell.col}, ${cell.row}`;
+      } else {
+        this.hoverRect.setVisible(false);
+      }
+      if (this.isPointerDown && state.mode==='tiles' && cell){
+        if (!this.lastPaintedCell || this.lastPaintedCell.col!==cell.col || this.lastPaintedCell.row!==cell.row){
+          this.paintCell(cell.col, cell.row, this.eraseMode ? 0 : state.activeTile, true);
+          this.lastPaintedCell = cell;
+        }
+      }
+    });
+
+    const endStroke = ()=>{
+      if (this.isPointerDown){ this.isPointerDown=false; this.redrawShoreline(); }
+    };
+    this.input.on('pointerup', endStroke);
+    this.input.on('pointerupoutside', endStroke);
+    this.input.mouse && (this.input.mouse.disableContextMenu());
+
+    // drag existing objects around
+    this.input.on('drag', (pointer, obj, dragX, dragY)=>{
+      if (state.mode!=='objects') return;
+      obj.x = dragX; obj.y = dragY;
+      const label = this.objSprites[obj.getData('objId')]?.label;
+      if (label) label.setPosition(dragX, dragY - (obj.height/2) - 10);
+    });
+    this.input.on('dragend', (pointer, obj)=>{
+      if (state.mode!=='objects') return;
+      const col = Phaser.Math.Clamp(Math.floor(obj.x/TILE_SIZE), 0, state.cols-1);
+      const row = Phaser.Math.Clamp(Math.floor(obj.y/TILE_SIZE), 0, state.rows-1);
+      const o = state.objects.find(o=>o.id===obj.getData('objId'));
+      if (o){ o.col=col; o.row=row; o.x=col*TILE_SIZE+TILE_SIZE/2; o.y=row*TILE_SIZE+TILE_SIZE/2; }
+      this.syncObjectVisual(o);
+    });
+
+    // keyboard
+    const isTypingInField = ()=>{
+      const el = document.activeElement;
+      if (!el) return false;
+      const tag = el.tagName;
+      return tag==='INPUT' || tag==='TEXTAREA' || el.isContentEditable;
+    };
+    this.input.keyboard.on('keydown-DELETE', ()=>{ if (!isTypingInField()) deleteSelectedObject(); });
+    this.input.keyboard.on('keydown-BACKSPACE', ()=>{ if (!isTypingInField()) deleteSelectedObject(); });
+    this.wasd = this.input.keyboard.addKeys({up:'W',down:'S',left:'A',right:'D'});
+    this.cursors = this.input.keyboard.createCursorKeys();
+  }
+
+  pointerToCell(pointer){
+    const x = pointer.worldX, y = pointer.worldY;
+    if (x<0||y<0||x>=state.cols*TILE_SIZE||y>=state.rows*TILE_SIZE) return null;
+    return { col: Math.floor(x/TILE_SIZE), row: Math.floor(y/TILE_SIZE) };
+  }
+
+ensureTileTexture(type, variant){
+     // If this tile type points at a real preloaded image, just use that
+     // texture directly (identical to mapLoader.js's ensureTileTexture in
+     // the actual game). The old code here called textures.addImage(key,
+     // type.imageKey, ...) as if type.imageKey were an image element, but
+     // it's just the *string key* of an already-loaded texture — addImage
+     // needs a real HTMLImageElement/Canvas as its source, so that call
+     // silently produced a broken, sizeless texture. Every tile painted
+     // with it then rendered as nothing, which is why the whole canvas
+     // looked black. Falling through to the procedural painters below
+     // whenever there's no valid image avoids that trap entirely.
+     if (type.imageKey && this.textures.exists(type.imageKey)){
+       return type.imageKey;
+     }
+     const key = `tile_${type.name}_${variant}`;
+     if (!this.textures.exists(key)){
+       const g = this.make.graphics({x:0,y:0,add:false});
+       const rand = mulberry32(hashString(type.name) + variant*97 + 13);
+       const drawer = type.draw || BUILTIN_DRAWERS[type.name] || drawFlat;
+       drawer(g, rand, type);
+       g.generateTexture(key, TILE_SIZE, TILE_SIZE);
+       g.destroy();
+     }
+     return key;
+   }
+
+  // Full rebuild: called on new map / resize / load / undo. Destroys and
+  // recreates every display object from `state` — simplest way to keep
+  // the canvas perfectly in sync with the data model.
+  rebuildAll(){
+    this.exitTestMode();
+    this.tileImgs.forEach(row=>row.forEach(img=>img && img.destroy()));
+    this.tileImgs = [];
+    Object.values(this.objSprites).forEach(o=>{
+      o.rect?.destroy(); o.sprite?.destroy(); o.border?.destroy();
+      o.label?.destroy(); o.glyph?.destroy();
+    });
+    this.objSprites = {};
+
+    const px = state.cols*TILE_SIZE, py = state.rows*TILE_SIZE;
+    this.cameras.main.setBounds(0,0,px,py);
+    this.physics.world.setBounds(0,0,px,py);
+    this.game.scale.resize(px, py);
+
+    for (let r=0;r<state.rows;r++){
+      const row=[];
+      for (let c=0;c<state.cols;c++){
+        row.push(this.paintCell(c, r, state.tiles[r][c], true, true));
+      }
+      this.tileImgs.push(row);
+    }
+    this.redrawGrid();
+    this.redrawShoreline();
+
+    state.objects.forEach(o=>this.createObjectVisual(o));
+    this.updateSpawnMarker();
+    refreshStatus();
+  }
+
+  redrawGrid(){
+    this.gridGfx.clear();
+    if (!state.showGrid) return;
+    this.gridGfx.lineStyle(1, 0x000000, 0.12);
+    const px = state.cols*TILE_SIZE, py = state.rows*TILE_SIZE;
+    for (let c=0;c<=state.cols;c++) this.gridGfx.lineBetween(c*TILE_SIZE,0,c*TILE_SIZE,py);
+    for (let r=0;r<=state.rows;r++) this.gridGfx.lineBetween(0,r*TILE_SIZE,px,r*TILE_SIZE);
+  }
+
+  // paints/repaints one cell's texture; `skipStateWrite` used during
+  // rebuildAll() since state.tiles is already the source of truth there.
+  paintCell(col, row, tileId, skipShoreline, skipStateWrite){
+    if (col<0||row<0||col>=state.cols||row>=state.rows) return null;
+    const type = state.tileTypes[tileId] ?? state.tileTypes[0];
+    if (!skipStateWrite) state.tiles[row][col] = tileId;
+
+    const variant = hashInt(row,col,hashString(type.name)) % TILE_VARIANTS;
+    const texKey = this.ensureTileTexture(type, variant);
+    const x = col*TILE_SIZE+TILE_SIZE/2, y = row*TILE_SIZE+TILE_SIZE/2;
+
+    let img = this.tileImgs[row] && this.tileImgs[row][col];
+    if (img){ img.setTexture(texKey); }
+    else { img = this.add.image(x,y,texKey).setDepth(0); }
+    // Source tile art (esp. assets/src/11-14, the Ground Paths / Grass Path
+    // Blends / Special Ground Patterns sets) comes in inconsistent native
+    // resolutions — anywhere from ~78px to 144px square — because they were
+    // auto-cropped per-cell from reference sheets. Without this, Phaser draws
+    // each image at its native pixel size, so a 90px-wide tile spills out
+    // over 2-3 neighboring 32px grid cells ("oversize"/"not complete"/gray
+    // fringe bleeding across cell boundaries). Forcing every tile image to
+    // exactly TILE_SIZE×TILE_SIZE, no matter its source resolution, keeps
+    // every tile perfectly aligned to one grid cell.
+    img.setDisplaySize(TILE_SIZE, TILE_SIZE);
+    img.setFlipX(!type.noFlipY && (hashInt(row,col,555)&1)===1);
+    if (!skipShoreline) this.redrawShoreline();
+    return img;
+  }
+
+  redrawShoreline(){
+    this.shoreGfx.clear();
+    const isWater = (r,c)=>{
+      if (r<0||c<0||r>=state.rows||c>=state.cols) return false;
+      const t = state.tileTypes[state.tiles[r][c]];
+      return !!t && t.name==='water';
+    };
+    for (let r=0;r<state.rows;r++){
+      for (let c=0;c<state.cols;c++){
+        const t = state.tileTypes[state.tiles[r][c]];
+        if (!t || t.name!=='water') continue;
+        const x0=c*TILE_SIZE, y0=r*TILE_SIZE;
+        const edges = [
+          {dr:-1,dc:0,x1:x0,y1:y0,x2:x0+TILE_SIZE,y2:y0},
+          {dr:1,dc:0,x1:x0,y1:y0+TILE_SIZE,x2:x0+TILE_SIZE,y2:y0+TILE_SIZE},
+          {dr:0,dc:-1,x1:x0,y1:y0,x2:x0,y2:y0+TILE_SIZE},
+          {dr:0,dc:1,x1:x0+TILE_SIZE,y1:y0,x2:x0+TILE_SIZE,y2:y0+TILE_SIZE}
+        ];
+        edges.forEach(e=>{
+          if (isWater(r+e.dr,c+e.dc)) return;
+          this.shoreGfx.lineStyle(3,0xdff3ff,0.5);
+          this.shoreGfx.lineBetween(e.x1,e.y1,e.x2,e.y2);
+          const rand = mulberry32(hashInt(r,c,e.dr*3+e.dc*7+99));
+          for (let i=0;i<3;i++){
+            const t2 = rand();
+            this.shoreGfx.fillStyle(0xffffff,0.35);
+            this.shoreGfx.fillCircle(e.x1+(e.x2-e.x1)*t2, e.y1+(e.y2-e.y1)*t2, 1.2+rand()*1.4);
+          }
+        });
+      }
+    }
+  }
+
+createObjectVisual(o){
+     const type = state.objectTypes[o.key] || {name:o.name, glyph:'❔', color:0x888888};
+     const hasImageUrl = !!type.imageUrl;
+     const hasImageKey = !!type.imageKey && this.textures.exists(type.imageKey);
+     let vis;
+     if (hasImageUrl || hasImageKey){
+       // Ensure texture is added
+       const texKey = hasImageUrl ? `asset_${o.key}` : type.imageKey;
+       if (hasImageUrl && !this.textures.exists(texKey)){
+         // Remove data URL prefix
+         const base64 = type.imageUrl.split(',')[1];
+         this.textures.addBase64(texKey, base64);
+       }
+       const sprite = this.add.image(o.x, o.y, texKey)
+         .setDepth(5)
+         .setInteractive({draggable: state.mode==='objects'});
+       this.input.setDraggable(sprite, state.mode==='objects');
+       sprite.setData('objId', o.id);
+       // Image game objects have no setStrokeStyle of their own, so the
+       // collidable/selection outline for image-backed objects is drawn
+       // with a separate unfilled rectangle sized to match the sprite.
+       const border = this.add.rectangle(o.x, o.y, o.w, o.h)
+         .setDepth(5);
+       const label = this.add.text(o.x, o.y - o.h/2 - 10, labelFor(o), {
+         fontFamily:'sans-serif', fontSize:11, color:'#fff8e7', backgroundColor:'#000000aa', padding:{x:4,y:2}
+       }).setOrigin(0.5).setDepth(6);
+       vis = { sprite, border, label };
+     } else {
+       const rect = this.add.rectangle(o.x, o.y, o.w, o.h, o.color)
+         .setDepth(5).setInteractive({draggable: state.mode==='objects'});
+       rect.setData('objId', o.id);
+       this.input.setDraggable(rect, state.mode==='objects');
+       const label = this.add.text(o.x, o.y - o.h/2 - 10, labelFor(o), {
+         fontFamily:'sans-serif', fontSize:11, color:'#fff8e7', backgroundColor:'#000000aa', padding:{x:4,y:2}
+       }).setOrigin(0.5).setDepth(6);
+       const glyph = this.add.text(o.x, o.y, type.glyph || '', {fontSize:16}).setOrigin(0.5).setDepth(6);
+       vis = { rect, label, glyph };
+     }
+     this.objSprites[o.id] = vis;
+     this.syncObjectVisual(o);
+   }
+
+syncObjectVisual(o){
+     if (!o) return;
+     const vis = this.objSprites[o.id];
+     if (!vis) return;
+     if (vis.sprite){
+       // Image-based object
+       vis.sprite.setPosition(o.x, o.y);
+       // Set scale to match desired width and height
+       const texture = vis.sprite.texture;
+       if (texture){
+         const width = texture.getSourceImage().width;
+         const height = texture.getSourceImage().height;
+         vis.sprite.setScale(o.w / width, o.h / height);
+       }
+       vis.border.setPosition(o.x, o.y).setSize(o.w, o.h);
+       vis.border.setStrokeStyle(o.collidable?3:1, o.collidable?0xc24a38:0xf5e2c8, 1);
+       vis.label.setPosition(o.x, o.y - o.h/2 - 10).setText(labelFor(o));
+     } else {
+       // Glyph/rectangle object
+       vis.rect.setPosition(o.x, o.y);
+       vis.rect.setStrokeStyle(o.collidable?3:1, o.collidable?0xc24a38:0xf5e2c8, 1);
+       vis.label.setPosition(o.x, o.y - o.h/2 - 10).setText(labelFor(o));
+       vis.glyph.setPosition(o.x, o.y);
+     }
+     vis.rect?.setData('objId', o.id);
+     vis.sprite?.setData('objId', o.id);
+   }
+
+  removeObjectVisual(id){
+    const vis = this.objSprites[id];
+    if (vis){
+      vis.rect?.destroy(); vis.sprite?.destroy(); vis.border?.destroy();
+      vis.label?.destroy(); vis.glyph?.destroy();
+      delete this.objSprites[id];
+    }
+  }
+
+  refreshObjectInteractivity(){
+    Object.values(this.objSprites).forEach(v=>{
+      const target = v.sprite || v.rect;
+      if (!target) return;
+      target.input && (target.input.enabled = state.mode==='objects');
+      this.input.setDraggable(target, state.mode==='objects');
+    });
+  }
+
+  updateSpawnMarker(){
+    this.spawnMarker.setPosition(state.spawn.col*TILE_SIZE+TILE_SIZE/2, state.spawn.row*TILE_SIZE+TILE_SIZE/2);
+  }
+
+  // ---- test-walk mode: ephemeral physics layer, torn down on exit ----
+  // Uses the actual Hiraya spritesheet (same frames/anims as the real game)
+  // when it loaded successfully; falls back to the old placeholder box if
+  // assets/sprites/hiraya-sheet.png isn't sitting next to editor.html, so a
+  // missing asset never breaks Test Walk entirely.
+  createHirayaAnims(){
+    if (this.anims.exists('hiraya-walk-down')) return; // already built
+    this.anims.create({ key:'hiraya-walk-down', frames: this.anims.generateFrameNumbers('hiraya-sheet', { start:0, end:11 }), frameRate:12, repeat:-1 });
+    this.anims.create({ key:'hiraya-walk-up',   frames: this.anims.generateFrameNumbers('hiraya-sheet', { start:12, end:19 }), frameRate:10, repeat:-1 });
+    this.anims.create({ key:'hiraya-walk-side', frames: this.anims.generateFrameNumbers('hiraya-sheet', { start:24, end:34 }), frameRate:12, repeat:-1 });
+  }
+
+  enterTestMode(){
+    this.exitTestMode();
+    const solids = [];
+    for (let r=0;r<state.rows;r++) for (let c=0;c<state.cols;c++){
+      const t = state.tileTypes[state.tiles[r][c]];
+      if (t && t.solid){
+        const body = this.add.rectangle(c*TILE_SIZE+TILE_SIZE/2, r*TILE_SIZE+TILE_SIZE/2, TILE_SIZE, TILE_SIZE)
+          .setVisible(false);
+        this.physics.add.existing(body, true);
+        solids.push(body);
+      }
+    }
+    state.objects.forEach(o=>{
+      if (!o.collidable) return;
+      const body = this.add.rectangle(o.x, o.y, o.w, o.h).setVisible(false);
+      this.physics.add.existing(body, true);
+      solids.push(body);
+    });
+    this.testColliders = solids;
+
+    const spawnX = state.spawn.col*TILE_SIZE+TILE_SIZE/2, spawnY = state.spawn.row*TILE_SIZE+TILE_SIZE/2;
+    this.hirayaLoaded = this.textures.exists('hiraya-sheet');
+    if (this.hirayaLoaded){
+      this.createHirayaAnims();
+      this.tester = this.physics.add.sprite(spawnX, spawnY, 'hiraya-sheet', 0).setDepth(20);
+      // Same 44x78-frame hitbox convention as the real chapter scenes (feet-
+      // only box, not the full sprite) so collisions here match in-game feel.
+      this.tester.setSize(44 * 0.5, 78 * 0.35);
+      this.tester.setOffset(44 * 0.25, 78 * 0.6);
+      this.tester.facing = 'down';
+    } else {
+      // Fallback placeholder if the sprite asset isn't found next to editor.html.
+      this.tester = this.add.rectangle(spawnX, spawnY, 18, 18, 0xffe27a).setStrokeStyle(2,0x2e3138).setDepth(20);
+      this.physics.add.existing(this.tester, false);
+    }
+    this.tester.body.setCollideWorldBounds(true);
+    this.testCollider = this.physics.add.collider(this.tester, this.testColliders);
+    this.cameras.main.startFollow(this.tester, true, 1, 1);
+  }
+
+  exitTestMode(){
+    if (this.tester){ this.tester.destroy(); this.tester=null; }
+    this.testColliders.forEach(b=>b.destroy());
+    this.testColliders = [];
+    this.cameras.main.stopFollow();
+    this.cameras.main.setScroll(0,0);
+  }
+
+  update(){
+    if (state.mode!=='test' || !this.tester) return;
+    const speed = 160;
+    let vx=0, vy=0;
+    if (this.wasd.left.isDown || this.cursors.left.isDown) vx-=1;
+    if (this.wasd.right.isDown || this.cursors.right.isDown) vx+=1;
+    if (this.wasd.up.isDown || this.cursors.up.isDown) vy-=1;
+    if (this.wasd.down.isDown || this.cursors.down.isDown) vy+=1;
+    const moving = vx!==0 || vy!==0;
+
+    if (!this.hirayaLoaded){
+      // Placeholder box has no animation to drive — just move it.
+      if (moving){ const len=Math.hypot(vx,vy); this.tester.body.setVelocity((vx/len)*speed,(vy/len)*speed); }
+      else this.tester.body.setVelocity(0,0);
+      return;
+    }
+
+    if (moving){
+      const len = Math.hypot(vx,vy);
+      this.tester.body.setVelocity((vx/len)*speed, (vy/len)*speed);
+      if (vy<0) this.tester.facing = 'up';
+      else if (vy>0) this.tester.facing = 'down';
+      else if (vx!==0){ this.tester.facing = 'side'; this.tester.flipX = vx>0; }
+      this.tester.play(`hiraya-walk-${this.tester.facing}`, true);
+    } else {
+      this.tester.body.setVelocity(0,0);
+      this.tester.anims.stop();
+      const idleFrame = { down:0, up:12, side:24 }[this.tester.facing];
+      this.tester.setFrame(idleFrame);
+    }
+  }
+}
+
+function labelFor(o){ return (o.collidable? '🔒 ' : '') + o.name; }
+
+/* =========================================================================
+   OBJECT / SPAWN HELPERS (data-model side, called by UI + scene input)
+   ========================================================================= */
+function getNaturalSize(o){
+  // Looks up an object's "as authored" size: an image type's real pixel
+  // dimensions (1:1 with the tileset) times its catalog `scale` (1 for most
+  // art, 0.7 for the Bench/Lamp/Fountain/Vegetation/Border/Building set —
+  // see the note above OBJECT_FOLDERS), or the old 40x40 default for
+  // glyph/color-only types. Used both when first placing an object and by
+  // the inspector's "Reset to original size" button.
+  const type = state.objectTypes[o.key];
+  const scene = window.editorScene;
+  const texKey = type && (type.imageUrl ? `asset_${o.key}` : type.imageKey);
+  if (type && scene && texKey && scene.textures.exists(texKey)){
+    const img = scene.textures.get(texKey).getSourceImage();
+    const scale = type.scale ?? 1;
+    if (img && img.width && img.height) return { w: img.width*scale, h: img.height*scale };
+  }
+  return { w: 40, h: 40 };
+}
+function placeObject(typeKey, col, row){
+   const type = state.objectTypes[typeKey];
+   if (!type) return;
+   // Image-backed objects (catalog art or a custom upload) get sized to
+   // their real pixel dimensions, at the same 1:1 scale as the tileset, so
+   // e.g. a 4-tile-wide house sprite actually spans ~4 tiles instead of
+   // being squashed into one. Glyph/color-only types keep the old 40x40.
+   const { w, h } = getNaturalSize({ key: typeKey });
+   const o = {
+     id: state.nextObjId++,
+     key: typeKey,
+     name: type.name,
+     col, row,
+     x: col*TILE_SIZE+TILE_SIZE/2, y: row*TILE_SIZE+TILE_SIZE/2,
+     w, h,
+     color: type.color ?? 0x888888,
+     collidable: !!type.solid,
+     info: '',
+     locked: false
+   };
+   state.objects.push(o);
+   window.editorScene.createObjectVisual(o);
+   refreshStatus();
+}
+function setSpawn(col,row){
+  state.spawn = { col, row };
+  window.editorScene.updateSpawnMarker();
+  toast(`Spawn set to (${col}, ${row})`);
+}
+let selectedObjId = null;
+function selectObject(id){
+  selectedObjId = id;
+  refreshInspector();
+}
+function deleteSelectedObject(){
+  if (state.mode!=='objects' || selectedObjId==null) return;
+  snapshot();
+  state.objects = state.objects.filter(o=>o.id!==selectedObjId);
+  window.editorScene.removeObjectVisual(selectedObjId);
+  selectedObjId = null;
+  refreshInspector();
+  refreshStatus();
+}
+
+/* =========================================================================
+   UI WIRING
+   ========================================================================= */
+function renderTilePalette(){
+  const wrap = document.getElementById('tileSwatches');
+  wrap.innerHTML='';
+  Object.keys(state.tileTypes).map(Number).sort((a,b)=>a-b).forEach(id=>{
+    const t = state.tileTypes[id];
+    const el = document.createElement('div');
+    el.className = 'swatch' + (state.activeTile===id ? ' active':'');
+    const path = t.imageKey ? TILE_PATH_BY_KEY[t.imageKey] : null;
+    const chipInner = path ? `<img src="${path}" style="width:100%;height:100%;object-fit:cover;border-radius:3px;">` : '';
+    el.innerHTML = `
+      <span class="id">${id}</span>
+      <span class="chip ${t.solid?'solid':''}" style="background:${path?'transparent':toCss(t.color)}">${chipInner}</span>
+      <span class="meta">
+        <div class="name">${t.name}</div>
+        <label class="sub tile-solid-toggle" title="Toggle whether this tile blocks walking">
+          <input type="checkbox" ${t.solid?'checked':''}> blocks walking
+        </label>
+      </span>`;
+    const solidCb = el.querySelector('.tile-solid-toggle input');
+    solidCb.addEventListener('click', (e)=> e.stopPropagation());
+    solidCb.addEventListener('change', ()=>{
+      t.solid = solidCb.checked;
+      renderTilePalette();
+      refreshStatus();
+    });
+    el.addEventListener('click', ()=>{ state.activeTile=id; renderTilePalette(); refreshStatus(); });
+    wrap.appendChild(el);
+  });
+  document.getElementById('addTileBox').style.display =
+    Object.keys(state.tileTypes).length >= MAX_TILE_TYPES ? 'none' : 'block';
+}
+
+function renderObjectPalette(){
+  const wrap = document.getElementById('objectSwatches');
+  wrap.innerHTML='';
+  // Group swatches under a small header per category (Shadow, Stone, Decor,
+  // Box, Grass, Tent, House, Tower Spot, then Basic/Custom for the
+  // manually-added ones) so 50-odd object icons stay browsable.
+  const groups = {};
+  Object.keys(state.objectTypes).forEach(key=>{
+    const t = state.objectTypes[key];
+    const g = t.group || (t.imageUrl ? 'Custom' : 'Basic');
+    (groups[g] = groups[g] || []).push(key);
+  });
+  Object.keys(groups).forEach(g=>{
+    const title = document.createElement('div');
+    title.className = 'panel-title';
+    title.textContent = g;
+    wrap.appendChild(title);
+    groups[g].forEach(key=>{
+      const t = state.objectTypes[key];
+      const imgPath = t.imageUrl || (t.imageKey ? OBJECT_PATH_BY_KEY[t.imageKey] : null);
+      const el = document.createElement('div');
+      el.className = 'swatch obj-swatch' + (state.activeObjectType===key ? ' active':'');
+      el.draggable = true;
+      const chipInner = imgPath ? `<img src="${imgPath}" style="width:100%;height:100%;object-fit:contain;">` : (t.glyph||'');
+      el.innerHTML = `
+        <span class="chip ${t.solid?'solid':''}" style="background:${imgPath?'transparent':toCss(t.color)}">${chipInner}</span>
+        <span class="meta">
+          <div class="name">${t.name}</div>
+          <label class="sub tile-solid-toggle" title="Toggle whether new objects of this type block walking">
+            <input type="checkbox" ${t.solid?'checked':''}> blocks walking
+          </label>
+        </span>`;
+      const solidCb = el.querySelector('.tile-solid-toggle input');
+      solidCb.addEventListener('click', (e)=> e.stopPropagation());
+      solidCb.addEventListener('change', ()=>{
+        t.solid = solidCb.checked;
+        renderObjectPalette();
+        refreshStatus();
+      });
+      el.addEventListener('click', ()=>{ state.activeObjectType=key; renderObjectPalette(); refreshStatus(); });
+      el.addEventListener('dragstart', (e)=>{ e.dataTransfer.setData('text/plain', key); });
+      wrap.appendChild(el);
+    });
+  });
+}
+
+function refreshStatus(){
+  document.getElementById('stObjCount').textContent = state.objects.length;
+  document.getElementById('stSize').textContent = `${state.cols} × ${state.rows}`;
+  if (state.mode==='tiles') document.getElementById('stTool').textContent = state.tileTypes[state.activeTile]?.name || '–';
+  else if (state.mode==='objects') document.getElementById('stTool').textContent = state.objectTypes[state.activeObjectType]?.name || '–';
+  else if (state.mode==='spawn') document.getElementById('stTool').textContent = 'Spawn marker';
+  else document.getElementById('stTool').textContent = 'Walking…';
+}
+
+function refreshInspector(){
+  const el = document.getElementById('inspector');
+  const o = state.objects.find(o=>o.id===selectedObjId);
+  if (!o || state.mode!=='objects'){
+    el.innerHTML = `<div class="empty">Select an object on the map (in Objects mode) to edit its name and collision here.</div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="irow"><label>Name</label><input type="text" id="insName" value="${o.name.replace(/"/g,'&quot;')}"></div>
+    <div class="irow checkrow"><input type="checkbox" id="insCollide" ${o.collidable?'checked':''}> <label style="margin:0;">Blocks walking</label></div>
+    <div class="irow sizerow">
+      <div><label>Width</label><input type="number" id="insWidth" min="4" max="4000" step="1" value="${Math.round(o.w)}"></div>
+      <div><label>Height</label><input type="number" id="insHeight" min="4" max="4000" step="1" value="${Math.round(o.h)}"></div>
+    </div>
+    <div class="irow checkrow"><input type="checkbox" id="insLockAspect"> <label style="margin:0;">Lock aspect ratio</label></div>
+    <div class="irow"><button class="ghost" id="insResetSize" style="width:100%;">Reset to original size</button></div>
+    <div class="irow coords">Grid: (${o.col}, ${o.row}) · px: (${o.x}, ${o.y})</div>
+    <button class="danger" id="insDelete" style="width:100%;">Delete object</button>
+  `;
+  document.getElementById('insName').addEventListener('input', (e)=>{ o.name=e.target.value; window.editorScene.syncObjectVisual(o); });
+  document.getElementById('insCollide').addEventListener('change', (e)=>{ o.collidable=e.target.checked; window.editorScene.syncObjectVisual(o); });
+
+  const widthInput = document.getElementById('insWidth');
+  const heightInput = document.getElementById('insHeight');
+  const lockAspect = document.getElementById('insLockAspect');
+  const aspect = o.h ? o.w / o.h : 1;
+  widthInput.addEventListener('input', (e)=>{
+    const v = Phaser.Math.Clamp(parseFloat(e.target.value)||1, 4, 4000);
+    o.w = v;
+    if (lockAspect.checked){ o.h = Phaser.Math.Clamp(v/aspect, 4, 4000); heightInput.value = Math.round(o.h); }
+    window.editorScene.syncObjectVisual(o);
+  });
+  heightInput.addEventListener('input', (e)=>{
+    const v = Phaser.Math.Clamp(parseFloat(e.target.value)||1, 4, 4000);
+    o.h = v;
+    if (lockAspect.checked){ o.w = Phaser.Math.Clamp(v*aspect, 4, 4000); widthInput.value = Math.round(o.w); }
+    window.editorScene.syncObjectVisual(o);
+  });
+  document.getElementById('insResetSize').addEventListener('click', ()=>{
+    const size = getNaturalSize(o);
+    o.w = size.w; o.h = size.h;
+    widthInput.value = Math.round(o.w);
+    heightInput.value = Math.round(o.h);
+    window.editorScene.syncObjectVisual(o);
+    toast('Reset to original size');
+  });
+  document.getElementById('insDelete').addEventListener('click', deleteSelectedObject);
+}
+
+function openTilePicker(){
+  const grid = document.getElementById('tilePickerGrid');
+  grid.innerHTML = '';
+  const groups = {};
+  TILE_LIBRARY.forEach(t=>{ (groups[t.group] = groups[t.group] || []).push(t); });
+  Object.keys(groups).forEach(g=>{
+    const title = document.createElement('div');
+    title.className = 'pick-group-title';
+    title.textContent = g;
+    grid.appendChild(title);
+    const row = document.createElement('div');
+    row.className = 'pick-grid';
+    groups[g].forEach(t=>{
+      const cell = document.createElement('div');
+      cell.className = 'pick-item';
+      cell.title = t.key;
+      cell.innerHTML = `<img src="${t.path}">`;
+      cell.addEventListener('click', ()=> addTileFromLibrary(t));
+      row.appendChild(cell);
+    });
+    grid.appendChild(row);
+  });
+  document.getElementById('tilePickerModal').classList.add('show');
+}
+function addTileFromLibrary(t){
+  const ids = Object.keys(state.tileTypes).map(Number);
+  if (ids.length>=MAX_TILE_TYPES){
+    toast('Tile IDs are capped at 0–9');
+    document.getElementById('tilePickerModal').classList.remove('show');
+    return;
+  }
+  let nextId=0; while(ids.includes(nextId)) nextId++;
+  const solid = document.getElementById('tpSolid').checked;
+  state.tileTypes[nextId] = { name: t.key, color: 0x888888, solid, imageKey: t.key };
+  document.getElementById('tpSolid').checked = false;
+  renderTilePalette();
+  toast(`Added "${t.key}" as tile ${nextId}`);
+  document.getElementById('tilePickerModal').classList.remove('show');
+}
+
+function setMode(mode){
+  state.mode = mode;
+  selectedObjId = mode==='objects' ? selectedObjId : null;
+  document.querySelectorAll('#modeGroup button').forEach(b=>{
+    b.classList.toggle('active', b.dataset.mode===mode);
+    b.classList.toggle('testing', b.dataset.mode==='test' && mode==='test');
+  });
+  ['tilesPalette','objectsPalette','spawnPalette','testPalette'].forEach(id=>{
+    document.getElementById(id).style.display = 'none';
+  });
+  document.getElementById(
+    mode==='tiles' ? 'tilesPalette' : mode==='objects' ? 'objectsPalette' : mode==='spawn' ? 'spawnPalette' : 'testPalette'
+  ).style.display = 'block';
+
+  const scene = window.editorScene;
+  if (scene){
+    if (mode==='test') scene.enterTestMode();
+    else scene.exitTestMode();
+    scene.refreshObjectInteractivity();
+  }
+  refreshInspector();
+  refreshStatus();
+}
+
+/* ---- export ---- */
+function buildExportData(){
+  const tileTypesOut = {};
+  Object.keys(state.tileTypes).forEach(id=>{
+    const t = state.tileTypes[id];
+    tileTypesOut[id] = { name:t.name, color: toCss(t.color), solid: !!t.solid };
+    if (t.imageKey) tileTypesOut[id].imageKey = t.imageKey;
+  });
+  return {
+    name: state.name,
+    cols: state.cols, rows: state.rows, tileSize: TILE_SIZE,
+    spawn: { col: state.spawn.col, row: state.spawn.row, x: state.spawn.col*TILE_SIZE+TILE_SIZE/2, y: state.spawn.row*TILE_SIZE+TILE_SIZE/2 },
+    tileTypes: tileTypesOut,
+    tiles: state.tiles.map(row=>row.join('')),
+    objects: state.objects.map(o=>({
+      key:o.key, name:o.name, col:o.col, row:o.row, x:o.x, y:o.y,
+      w:o.w, h:o.h,
+      color: toCss(o.color), collidable: !!o.collidable, info: o.info||''
+    }))
+  };
+}
+function buildJsSnippet(data){
+  const varBase = (state.name||'map').replace(/[^a-zA-Z0-9_]/g,'_').toUpperCase();
+  const mapLines = data.tiles.map(r=>`  '${r}'`).join(',\n');
+  const objLines = data.objects.map(o=>
+    `  { key: '${o.key}', name: '${o.name.replace(/'/g,"\\'")}', x: ${o.x}, y: ${o.y}, color: 0x${o.color.slice(1)}, collidable: ${o.collidable}, info: '${(o.info||'').replace(/'/g,"\\'")}' }`
+  ).join(',\n');
+  return `// Generated by the Pato Explorer map editor — paste straight into a scene file.
+// Tile legend matches js/mapLoader.js's TILE_TYPES (same ids, same names).
+const ${varBase}_SPAWN = { x: ${data.spawn.x}, y: ${data.spawn.y} };
+
+const ${varBase}_MAP = [
+${mapLines}
+];
+
+// key/name/x/y/color/info match the same shape Chapter1Scene.js already
+// uses for its \`objects\` array; \`collidable\` is new — for anything true,
+// add a static physics body (physics.add.existing(sprite, true)) and
+// include it alongside map.obstacles in your physics.add.collider(...) call.
+const ${varBase}_OBJECTS = [
+${objLines}
+];
+`;
+}
+function openExportModal(){
+  const data = buildExportData();
+  document.getElementById('exportJson').value = JSON.stringify(data, null, 2);
+  document.getElementById('exportJs').value = buildJsSnippet(data);
+  document.getElementById('exportModal').classList.add('show');
+}
+function downloadText(filename, text){
+  const blob = new Blob([text], {type:'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* ---- load / resize / new ---- */
+function applyResize(newCols, newRows){
+  newCols = Phaser.Math.Clamp(newCols|0, 4, 200);
+  newRows = Phaser.Math.Clamp(newRows|0, 4, 200);
+  snapshot();
+  const fresh = makeBlankTiles(newCols, newRows, null);
+  for (let r=0;r<Math.min(newRows,state.rows);r++)
+    for (let c=0;c<Math.min(newCols,state.cols);c++)
+      fresh[r][c] = state.tiles[r][c];
+  state.tiles = fresh;
+  state.cols = newCols; state.rows = newRows;
+  state.objects = state.objects.filter(o=>o.col<newCols && o.row<newRows);
+  state.spawn.col = Math.min(state.spawn.col, newCols-1);
+  state.spawn.row = Math.min(state.spawn.row, newRows-1);
+  window.editorScene.rebuildAll();
+  toast(`Resized to ${newCols} × ${newRows}`);
+}
+function loadFromData(data){
+  state.name = data.name || 'loaded_map';
+  state.cols = data.cols || (data.tiles && data.tiles[0] ? data.tiles[0].length : 30);
+  state.rows = data.rows || (data.tiles ? data.tiles.length : 16);
+  if (data.tileTypes){
+    const tt = {};
+    Object.keys(data.tileTypes).forEach(id=>{
+      const src = data.tileTypes[id];
+      tt[id] = { name:src.name, color: typeof src.color==='string'? toColorNum(src.color): src.color,
+                 solid: !!src.solid, draw: BUILTIN_DRAWERS[src.name], imageKey: src.imageKey };
+    });
+    state.tileTypes = tt;
+  }
+  state.tiles = (data.tiles||[]).map(row=>row.split('').map(Number));
+  while (state.tiles.length < state.rows) state.tiles.push(new Array(state.cols).fill(0));
+  state.objects = (data.objects||[]).map(o=>{
+    // Accept objects specified by pixel x/y, by grid col/row, or both —
+    // templates below give some as col/row (e.g. plot data ported straight
+    // from a chapter's source) and others as x/y (ported from pixel-based
+    // placeholders), so derive whichever half is missing from the other.
+    const col = o.col ?? Math.floor(o.x/TILE_SIZE);
+    const row = o.row ?? Math.floor(o.y/TILE_SIZE);
+    const x = o.x ?? (col*TILE_SIZE + TILE_SIZE/2);
+    const y = o.y ?? (row*TILE_SIZE + TILE_SIZE/2);
+    return {
+      id: state.nextObjId++,
+      key:o.key, name:o.name,
+      col, row, x, y, w:o.w||40, h:o.h||40,
+      color: typeof o.color==='string'? toColorNum(o.color): (o.color??0x888888),
+      collidable: !!o.collidable, info:o.info||''
+    };
+  });
+  state.spawn = data.spawn ? { col:data.spawn.col ?? 0, row:data.spawn.row ?? 0 } : { col:1, row:1 };
+  document.getElementById('mapName').value = state.name;
+  document.getElementById('colsInput').value = state.cols;
+  document.getElementById('rowsInput').value = state.rows;
+  renderTilePalette();
+  window.editorScene.rebuildAll();
+  toast(`Loaded "${state.name}"`);
+}
+
+/* =========================================================================
+   CHAPTER TEMPLATES — read-only copies of the tile grids (and, where the
+   scene defines one, the interactable-object layout) baked into
+   js/scenes/PrologueScene.js and Chapter1-5Scene.js. Loading one just calls
+   loadFromData() with this data, same as importing a JSON file — it's a
+   starting point / reference for where things already sit in that chapter,
+   not a live link back to the scene file. Chapter 4 and 5 have no
+   col/row-addressable "objects" array in their source (Chapter 4's ducks
+   are free-roaming pixel points for a mini-game, and Chapter 5 has no
+   findable objects at all), so those two templates are tiles + spawn only.
+   ========================================================================= */
+const MAP_TEMPLATES = {
+  prologue: {
+    name: 'prologue_town_plaza',
+    cols: 40, rows: 25,
+    tiles: [
+      '5555555555555555555555555555555555555555',
+      '5000000000000000000000000000000000000005',
+      '5033333333333333333333333333333333333305',
+      '5030000000000000000000000000000000000305',
+      '5030000000000000000000000000000000000305',
+      '5030000000000000000000000000000000000305',
+      '5030000000000000000000000000000000000305',
+      '5030000000000000000000000000000000000305',
+      '5030000000000000000000000000000000000305',
+      '5030000000000000000000000000000000000305',
+      '5030000000000000000000000000000000000305',
+      '5030000000000000000000000000000000000305',
+      '5030000000000000000000000000000000000305',
+      '5030000000000000000000000000000000000305',
+      '5030000000000000000000000000000000000305',
+      '5030000000000000000000000000000000000305',
+      '5030000000000000000000000000000000000305',
+      '5030000000000000000000000000000000000305',
+      '5030000000000000000000000000000000000305',
+      '5030000000000000000000000000000000000305',
+      '5030000000000000000000000000000000000305',
+      '5030000000000000000000000000000000000305',
+      '5033333333333333333333333333333333333305',
+      '5000000000000000000000000000000000000005',
+      '5555555555555555555555555555555555555555'
+    ],
+    objects: [
+      { key:'well', name:'Well', x:384, y:320, w:46, h:46, color:0x8b4513, info:"The town plaza's well has provided water to generations of Pateros residents." },
+      { key:'stall', name:'Market Stall', x:896, y:280, w:46, h:46, color:0xcd853f, info:'Small stalls like this once lined the plaza, selling local goods and produce.' },
+      { key:'statue', name:'Statue', x:640, y:480, w:46, h:46, color:0xa0522d, info:"A statue commemorating the founders of Pateros stands in the plaza's center." }
+    ],
+    spawn: { col:20, row:22 }
+  },
+  chapter1: {
+    name: 'chapter1_river_remembers',
+    cols: 48, rows: 32,
+    tiles: [
+      '111111111111111111111111111111111111111111111111',
+      '122222222222222222222222222222222222222222222221',
+      '122222222222222222222222222222222222222222222221',
+      '122222222222222222222222222222222222222222222221',
+      '144444444444444444444443344444444444444444444441',
+      '100000000000000000000003300000000000000000000001',
+      '100000000000000000000003300000000000000000000001',
+      '100000110000000000000003300000000000000000000001',
+      '100000100000000000000003300000000011000000000001',
+      '100000000000000000000003300000000010000000000001',
+      '100000000000000000000003300000000000000000000001',
+      '100000000000000000000003300000000000000000000001',
+      '100000000000000000000003300000000000000010000001',
+      '100000000011000000000003300000000000000011000001',
+      '100000000010000000000003300000000000000000000001',
+      '100000000000000000000003300000000000000000000001',
+      '100000000000000000000003300000000000000000000001',
+      '133333333333333333333333333333333333333333333331',
+      '133333333333333333333333333333333333333333333331',
+      '100000000000000000000003300000000000001100000001',
+      '100000110000000000000003300000000000001000000001',
+      '100000100000000000000003300000000000000000000001',
+      '100000000000000000000003300000000000000000000001',
+      '100000000000000000000003300000110000000000000001',
+      '100000000000000000000003300000100000000000000001',
+      '100000000000000000000003300000000000000000000001',
+      '100000000000001100000003300000000000000000000001',
+      '100000000000001000000003300000000000000000000001',
+      '100000000000000000000003300000000000000000000001',
+      '100000000000000000000003300000000000000000000001',
+      '100000000000000000000003300000000000000000000001',
+      '111111111111111111111111111111111111111111111111'
+    ],
+    objects: [
+      { key:'boat', name:'Boat', x:1185, y:165, w:46, h:46, color:0x6b4a2f, info:'Boats like this banca carried people and goods along the river.' },
+      { key:'goods', name:'Goods', x:285, y:375, w:46, h:46, color:0xb5893b, info:'Rice, fish, and woven goods were common items traded along the river.' },
+      { key:'agoho', name:'Agoho Tree', x:915, y:255, w:46, h:46, color:0x3c7a3e, info:'Agoho trees were associated with the historical name "Aguho."' },
+      { key:'house', name:'House', x:1095, y:795, w:46, h:46, color:0x8a5a3a, info:'Riverside houses were built close to the water for easy trade and travel.' },
+      { key:'stall', name:'Trading Stall', x:375, y:705, w:46, h:46, color:0xc24a38, info:'The embarcadero was a landing point where boats loaded and unloaded goods.' }
+    ],
+    spawn: { col:22, row:18 }
+  },
+  chapter2: {
+    name: 'chapter2_old_town',
+    cols: 48, rows: 32,
+    tiles: [
+      '555555555555555555555555555555555555555555555555',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000044444443344444440000000000000005',
+      '500000000000000044444443344444440000000000000005',
+      '500000000000000044444443344444440000000000000005',
+      '500000000000000044444443344444440000000000000005',
+      '533333333333333333333333333333333333333333333335',
+      '533333333333333333333333333333333333333333333335',
+      '500000000000000044444443344444440000000000000005',
+      '500000000000000044444443344444440000000000000005',
+      '500000000000000044444443344444440000000000000005',
+      '500000000000000044444443344444440000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '555555555555555555555555555555555555555555555555'
+    ],
+    objects: [
+      { key:'market', name:'Market (plot)', col:26, row:8, w:46, h:46, color:0xc24a38, info:'This spot sits right along the road leading into town.' },
+      { key:'municipal', name:'Municipal Building (plot)', col:20, row:13, w:46, h:46, color:0x9c3b2e, info:'This spot sits near the very center of the community.' },
+      { key:'community', name:'Community Area (plot)', col:27, row:18, w:46, h:46, color:0x3c7a3e, info:'This open spot near the center is where neighbors gather.' },
+      { key:'houses', name:'Houses (plot)', col:8, row:25, w:46, h:46, color:0x8a5a3a, info:'This quiet spot sits away from the busy center.' },
+      { key:'road', name:'Road (plot)', col:26, row:27, w:46, h:46, color:0x6b4f30, info:'This spot needs a path connecting it to the rest of town.' }
+    ],
+    spawn: { col:22, row:23 }
+  },
+  chapter3: {
+    name: 'chapter3_historical_area',
+    cols: 48, rows: 32,
+    tiles: [
+      '555555555555555555555555555555555555555555555555',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '555555555555555555555555555555555555555555555555'
+    ],
+    objects: [
+      { key:'flag', name:'Torn Flag', col:8, row:6, w:46, h:46, color:0x9c3b2e, info:'Pateros residents were among those who became involved in the revolutionary movement.' },
+      { key:'letter', name:'Hidden Letter', col:40, row:7, w:46, h:46, color:0x6b4a2f, info:'The Philippine Revolution affected communities throughout the region.' },
+      { key:'armband', name:'Katipunan Armband', col:24, row:16, w:46, h:46, color:0x3b2410, info:'Many Katipuneros organized and met in secret, away from the eyes of the Spanish authorities.' },
+      { key:'supplies', name:'Buried Supplies', col:12, row:24, w:46, h:46, color:0x5a4a30, info:'Ordinary residents sometimes hid supplies and provisions for those who joined the movement.' },
+      { key:'marker', name:'Meeting Marker', col:38, row:25, w:46, h:46, color:0x4a3624, info:'News between revolutionaries had to travel quietly, at great risk to whoever carried it.' }
+    ],
+    spawn: { col:23, row:26 }
+  },
+  chapter4: {
+    name: 'chapter4_duck_yard',
+    cols: 48, rows: 32,
+    tiles: [
+      '555555555555555555555555555555555555555555555555',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000222222200000000005',
+      '500000000000000000000003300000222222200000000005',
+      '500000000000000000000003300000222222200000000005',
+      '500000000000000000000003300000222222200000000005',
+      '500000000000000000000003300000222222200000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '555555555555555555555555555555555555555555555555'
+    ],
+    objects: [
+      { key:'pen', name:'Duck Pen (area, cols 10–17 × rows 5–10)', col:10, row:5, w:46, h:46, color:0x6b4f30, info:"Marked-off patch of grass where herded ducks settle — not a physical fence in-game, just a reference for the pen's top-left corner." }
+    ],
+    spawn: { col:23, row:26 }
+  },
+  chapter5: {
+    name: 'chapter5_heritage_square',
+    cols: 48, rows: 32,
+    tiles: [
+      '555555555555555555555555555555555555555555555555',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '500000000000000333333333333333333000000000000005',
+      '500000000000000333333333333333333000000000000005',
+      '500000000000000333333333333333333000000000000005',
+      '500000000000000333333333333333333000000000000005',
+      '500000000000000333333333333333333000000000000005',
+      '500000000000000333333333333333333000000000000005',
+      '500000000000000333333333333333333000000000000005',
+      '500000000000000333333333333333333000000000000005',
+      '500000000000000333333333333333333000000000000005',
+      '500000000000000333333333333333333000000000000005',
+      '500000000000000000000003300000000000000000000005',
+      '555555555555555555555555555555555555555555555555'
+    ],
+    objects: [],
+    spawn: { col:23, row:26 }
+  }
+};
+
+function loadTemplate(id){
+  const tpl = MAP_TEMPLATES[id];
+  if (!tpl) return;
+  snapshot();
+  loadFromData(tpl);
+}
+
+/* =========================================================================
+   BOOTSTRAP
+   ========================================================================= */
+window.addEventListener('DOMContentLoaded', ()=>{
+  const config = {
+    type: Phaser.AUTO,
+    width: state.cols*TILE_SIZE,
+    height: state.rows*TILE_SIZE,
+    parent: 'gameContainer',
+    backgroundColor: '#2e3138',
+    pixelArt: true,
+    physics: { default:'arcade', arcade:{ debug:false } },
+    scene: [EditorScene]
+  };
+  new Phaser.Game(config);
+
+  renderTilePalette();
+  renderObjectPalette();
+  refreshStatus();
+
+  // topbar
+  document.getElementById('mapName').addEventListener('input', e=>{ state.name = e.target.value; });
+  document.getElementById('resizeBtn').addEventListener('click', ()=>{
+    applyResize(+document.getElementById('colsInput').value, +document.getElementById('rowsInput').value);
+  });
+  document.getElementById('newMapBtn').addEventListener('click', ()=>{
+    confirmDialog('Start a new map?', 'This clears the current tiles and objects. Export first if you want to keep them.', ()=>{
+      snapshot();
+      state.name='new_map'; state.cols=30; state.rows=16;
+      state.tiles = makeBlankTiles(30,16,1);
+      state.objects = []; state.spawn = {col:15,row:8};
+      document.getElementById('mapName').value='new_map';
+      document.getElementById('colsInput').value=30;
+      document.getElementById('rowsInput').value=16;
+      window.editorScene.rebuildAll();
+      toast('New blank map');
+    });
+  });
+  document.getElementById('templateSelect').addEventListener('change', (e)=>{
+    const id = e.target.value;
+    const select = e.target;
+    if (!id) return;
+    const label = select.options[select.selectedIndex].text;
+    select.value = ''; // one-shot action — drop back to the placeholder either way
+    confirmDialog(`Load "${label}"?`, "This replaces the current tiles and objects with that chapter's layout. Export first if you want to keep what you have now.", ()=>{
+      loadTemplate(id);
+    });
+  });
+  document.getElementById('gridToggle').addEventListener('change', e=>{
+    state.showGrid = e.target.checked;
+    window.editorScene.redrawGrid();
+  });
+  document.getElementById('undoBtn').addEventListener('click', undo);
+  window.addEventListener('keydown', (e)=>{
+    if ((e.ctrlKey||e.metaKey) && e.key==='z'){ e.preventDefault(); undo(); }
+  });
+
+  document.querySelectorAll('#modeGroup button').forEach(b=>{
+    b.addEventListener('click', ()=>setMode(b.dataset.mode));
+  });
+
+  // add tile type from the tileset browser
+  document.getElementById('openTilePickerBtn').addEventListener('click', openTilePicker);
+  document.querySelector('.tp-close').addEventListener('click', ()=>document.getElementById('tilePickerModal').classList.remove('show'));
+
+  // add custom object type
+  document.getElementById('addObjBtn').addEventListener('click', ()=>{
+    const name = document.getElementById('newObjName').value.trim();
+    if (!name){ toast('Give the object a name first'); return; }
+    const key = slugify(name) + (state.objectTypes[slugify(name)] ? '_'+Date.now()%1000 : '');
+    const color = toColorNum(document.getElementById('newObjColor').value);
+    const solid = document.getElementById('newObjSolid').checked;
+    const glyph = document.getElementById('newObjGlyph').value.trim();
+    state.objectTypes[key] = { name, color, solid, glyph };
+    state.activeObjectType = key;
+    document.getElementById('newObjName').value='';
+    document.getElementById('newObjGlyph').value='';
+    renderObjectPalette();
+    toast(`Added object "${name}"`);
+  });
+
+  // add object from asset
+   document.getElementById('addObjFromAssetBtn').addEventListener('click', ()=>{
+     document.getElementById('assetFileInput').value = '';
+     document.getElementById('assetFileInput').click();
+   });
+   document.getElementById('assetFileInput').addEventListener('change', (e)=>{
+     const file = e.target.files[0];
+     if (!file) return;
+     const reader = new FileReader();
+     reader.onload = ()=>{
+       const imageUrl = reader.result; // data URL
+       const name = file.name.replace(/\.[^/.]+$/, ""); // remove extension
+       const key = slugify(name) + (state.objectTypes[slugify(name)] ? '_'+Date.now()%1000 : '');
+       // Add texture to scene if exists
+       if (window.editorScene && window.editorScene.textures){
+         const texKey = `asset_${key}`;
+         if (!window.editorScene.textures.exists(texKey)){
+           const base64 = imageUrl.split(',')[1];
+           window.editorScene.textures.addBase64(texKey, base64);
+         }
+       }
+       state.objectTypes[key] = { name, imageUrl, solid: true }; // solid by default
+       state.activeObjectType = key;
+       renderObjectPalette();
+       toast(`Added object "${name}" from asset`);
+     };
+     reader.readAsDataURL(file);
+   });
+
+   // drag-and-drop from palette onto the canvas
+  const wrap = document.getElementById('canvasWrap');
+  wrap.addEventListener('dragover', e=>{ e.preventDefault(); });
+  wrap.addEventListener('drop', e=>{
+    e.preventDefault();
+    const key = e.dataTransfer.getData('text/plain');
+    if (!key || !state.objectTypes[key]) return;
+    const gc = document.getElementById('gameContainer').getBoundingClientRect();
+    const x = e.clientX - gc.left, y = e.clientY - gc.top;
+    if (x<0||y<0||x>=state.cols*TILE_SIZE||y>=state.rows*TILE_SIZE) return;
+    const col = Math.floor(x/TILE_SIZE), row = Math.floor(y/TILE_SIZE);
+    if (state.mode!=='objects') setMode('objects');
+    snapshot();
+    placeObject(key, col, row);
+    selectObject(state.nextObjId-1);
+  });
+
+  // load
+  document.getElementById('loadBtn').addEventListener('click', ()=>document.getElementById('fileInput').click());
+  document.getElementById('fileInput').addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      try{ const data = JSON.parse(reader.result); snapshot(); loadFromData(data); }
+      catch(err){ toast('Could not read that file — is it valid JSON?'); }
+    };
+    reader.readAsText(file);
+    e.target.value='';
+  });
+
+  // export modal
+  document.getElementById('exportBtn').addEventListener('click', openExportModal);
+  document.querySelector('.ex-close').addEventListener('click', ()=>document.getElementById('exportModal').classList.remove('show'));
+  document.querySelectorAll('.tabs button').forEach(tabBtn=>{
+    tabBtn.addEventListener('click', ()=>{
+      document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+      tabBtn.classList.add('active');
+      const isJson = tabBtn.dataset.tab==='json';
+      document.getElementById('exportJson').style.display = isJson?'block':'none';
+      document.getElementById('exportJs').style.display = isJson?'none':'block';
+    });
+  });
+  document.getElementById('copyExportBtn').addEventListener('click', ()=>{
+    const visible = document.getElementById('exportJson').style.display!=='none'
+      ? document.getElementById('exportJson') : document.getElementById('exportJs');
+    visible.select();
+    let ok=false;
+    try{ ok = document.execCommand('copy'); }catch(e){ ok=false; }
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(visible.value).then(()=>toast('Copied to clipboard')).catch(()=>{
+        if (!ok) toast('Auto-copy blocked — text is selected, press Ctrl+C');
+      });
+    } else if (ok){ toast('Copied to clipboard'); }
+    else { toast('Auto-copy blocked — text is selected, press Ctrl+C'); }
+  });
+  document.getElementById('downloadJsonBtn').addEventListener('click', ()=>{
+    downloadText(`${state.name||'map'}.json`, document.getElementById('exportJson').value);
+  });
+  document.getElementById('downloadJsBtn').addEventListener('click', ()=>{
+    downloadText(`${state.name||'map'}.js`, document.getElementById('exportJs').value);
+  });
+
+  // quick-save / restore this map across sessions (best-effort; the
+  // Download/Load JSON flow above is the reliable way to keep your work)
+  (async ()=>{
+    try{
+      const saved = await window.storage?.get('pato_map_editor_last');
+      if (saved && saved.value){
+        confirmDialog('Restore last session?', 'Found a map from your last visit — load it?', ()=>{
+          try{ loadFromData(JSON.parse(saved.value)); }catch(e){}
+        });
+      }
+    }catch(e){ /* no persistent storage available — that's fine */ }
+  })();
+  window.addEventListener('beforeunload', ()=>{
+    try{ window.storage?.set('pato_map_editor_last', JSON.stringify(buildExportData())); }catch(e){}
+  });
+});
+</script>
+</body>
+</html>

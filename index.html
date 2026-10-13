@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pato Explorer</title>
+
+  <meta name="description" content="PATO Explorer is a story-driven 2D exploration game that brings the history and culture of Pateros to life. Meet NPCs based on real historical figures, explore the town, and piece together its heritage journal one chapter at a time." />
+  <meta name="theme-color" content="#1a1206" />
+
+  <!-- Open Graph (Facebook, Discord, etc.) -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Pato Explorer" />
+  <meta property="og:description" content="A story-driven 2D exploration game about the history and culture of Pateros — meet local figures, explore the town, and piece together its heritage one chapter at a time." />
+  <meta property="og:image" content="assets/apple-touch-icon.png" />
+
+  <!-- Twitter/X card -->
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Pato Explorer" />
+  <meta name="twitter:description" content="A story-driven 2D exploration game about the history and culture of Pateros." />
+  <meta name="twitter:image" content="assets/apple-touch-icon.png" />
+
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="game-container"></div>
+
+  <div id="fs-controls">
+    <button id="fs-btn" type="button">&#x26F6; Enter Full Screen</button>
+    <span id="fs-hint">Press Esc to exit full screen</span>
+  </div>
+  <div id="fs-toast">Press Esc to exit full screen</div>
+
+ <script>
+  function checkLogin() {
+    return fetch('api/check_session.php', { cache: 'no-store' }).then(r => r.json());
+  }
+  checkLogin()
+    .then(d => { if (!d.logged_in) window.location.href = 'login.html'; })
+    .catch(() => { window.location.href = 'login.html'; });
+
+  // Keep the PHP session alive during long play sessions.
+  setInterval(() => { checkLogin().catch(() => {}); }, 5 * 60 * 1000);
+</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
+  <script src="js/soundManager.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/progress.js"></script>
+  <script src="js/journalData.js"></script>
+  <script src="js/journalBook.js"></script>
+  <script src="js/mapLoader.js"></script>
+  <script src="js/scenes/PreloadScene.js"></script>
+  <script src="js/scenes/MenuScene.js"></script>
+  <script src="js/scenes/AboutScene.js"></script>
+  <script src="js/scenes/SettingsScene.js"></script>
+  <script src="js/scenes/GameScene.js"></script>
+  <script src="js/scenes/Chapter1Scene.js"></script>
+  <script src="js/scenes/Chapter2Scene.js"></script>
+  <script src="js/scenes/Chapter3Scene.js"></script>
+  <script src="js/scenes/Chapter4Scene.js"></script>
+  <script src="js/scenes/Chapter5Scene.js"></script>
+  <script src="js/scenes/PrologueScene.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

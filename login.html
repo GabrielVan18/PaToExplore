@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Game Login & Registration</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #222; color: #fff; text-align: center; padding-top: 50px; }
+        .container { background: #333; padding: 20px; display: inline-block; border-radius: 8px; width: 300px; }
+        input { width: 90%; padding: 8px; margin: 10px 0; border-radius: 4px; border: none; }
+        button { width: 100%; padding: 10px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #218838; }
+        .toggle-btn { background: #007bff; margin-top: 5px; }
+        .toggle-btn:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2 id="form-title">Game Login</h2>
+        <div id="message" style="color: yellow; font-size: 14px;"></div>
+        
+        <input type="text" id="username" placeholder="Username">
+        <input type="password" id="password" placeholder="Password">
+        
+        <button id="submit-btn" onclick="handleAuth()">Login</button>
+        <button class="toggle-btn" onclick="toggleMode()">Switch to Registration</button>
+    </div>
+
+    <script>
+        let isRegistering = false;
+
+        function toggleMode() {
+            isRegistering = !isRegistering;
+            document.getElementById('form-title').innerText = isRegistering ? "Register Account" : "Game Login";
+            document.getElementById('submit-btn').innerText = isRegistering ? "Register" : "Login";
+            document.querySelector('.toggle-btn').innerText = isRegistering ? "Already have an account? Login" : "Switch to Registration";
+            document.getElementById('message').innerText = "";
+        }
+
+        async function handleAuth() {
+            const user = document.getElementById('username').value.trim();
+            const pass = document.getElementById('password').value.trim();
+            const msg = document.getElementById('message');
+
+            if (!user || !pass) {
+                msg.innerText = "Please fill in all fields!";
+                return;
+            }
+
+            const actionType = isRegistering ? 'register' : 'login';
+
+            try {
+                const response = await fetch('login_backend.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: actionType, username: user, password: pass })
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    if (isRegistering) {
+                        alert("Registration successful! You can now log in.");
+                        toggleMode();
+                    } else {
+                        localStorage.setItem('currentUser', JSON.stringify(result.user));
+                        if (result.role === 'admin') {
+                            window.location.href = 'admin.html';
+                        } else {
+                            window.location.href = 'index.html';
+                        }
+                    }
+                } else {
+                    msg.innerText = result.message || 'An error occurred!';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                msg.innerText = 'Server connection error!';
+            }
+        }
+    </script>
+</body>
+</html>

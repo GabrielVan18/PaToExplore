@@ -1,0 +1,118 @@
+@font-face {
+  font-family: 'Tildunk';
+  src: url('../assets/fonts/tildunk.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block; /* game text shouldn't flash in the fallback font */
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #14161a;
+  font-family: system-ui, sans-serif;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+
+/* The game canvas is scaled by Phaser (Scale.FIT) to fill this box.
+   960px max = the game's native width, so it looks the same as before on
+   desktop, but it now also shrinks to fit smaller windows. 84px is the
+   space reserved for the fullscreen button row under the canvas. */
+#game-container {
+  width: min(960px, 100vw, calc((100vh - 84px) * 16 / 9));
+  width: min(960px, 100vw, calc((100dvh - 84px) * 16 / 9));
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  overflow: hidden;
+  /* ring + shadow drawn outside the box so they don't eat into the canvas */
+  box-shadow: 0 0 0 3px #3a3d46, 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+#game-container canvas {
+  display: block;
+  image-rendering: pixelated;
+}
+
+/* ---------- Fullscreen button ---------- */
+
+#fs-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#fs-btn {
+  padding: 8px 16px;
+  font: 600 14px system-ui, sans-serif;
+  color: #e8e6e1;
+  background: #2a2d35;
+  border: 2px solid #3a3d46;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+#fs-btn:hover {
+  background: #363a44;
+  border-color: #5a5f6d;
+}
+
+#fs-btn:active {
+  background: #21242b;
+}
+
+#fs-hint {
+  font-size: 13px;
+  color: #8b8f9a;
+}
+
+/* Small "Press Esc to exit" message shown briefly when entering fullscreen */
+#fs-toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  font-size: 14px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.75);
+  border-radius: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+  z-index: 20000; /* above the Chapter 5 DOM overlay (10000) */
+}
+
+#fs-toast.show {
+  opacity: 1;
+}
+
+/* ---------- Fullscreen mode (class toggled on <html> by main.js) ---------- */
+
+html.is-fullscreen,
+html.is-fullscreen body {
+  background: #000;
+}
+
+html.is-fullscreen body {
+  gap: 0;
+}
+
+html.is-fullscreen #game-container {
+  width: 100vw;
+  height: 100vh;
+  aspect-ratio: auto;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html.is-fullscreen #fs-controls {
+  display: none;
+}

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #111; color: #fff; padding: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #222; }
+        th, td { border: 1px solid #444; padding: 10px; text-align: center; }
+        th { background: #333; }
+        button { padding: 5px 10px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #c82333; }
+        .logout { background: #6c757d; margin-bottom: 20px; }
+        .logout:hover { background: #5a6268; }
+        .empty { color: #aaa; }
+    </style>
+</head>
+<body>
+
+    <h1>Admin Dashboard - PaToExplore</h1>
+    <button class="logout" onclick="logout()">Logout</button>
+
+    <h3>List of Players</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Username</th>
+                <th>Registered</th>
+                <th>Last Login</th>
+                <th>Chapters Done</th>
+                <th>Best Score</th>
+                <th>Saved Records</th>
+                <th>Last Played</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="user-table-body"></tbody>
+    </table>
+
+    <h3 style="margin-top:40px;">Recent Activity (latest 20)</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Player</th>
+                <th>Chapter Finished</th>
+                <th>Score</th>
+                <th>Time in Session</th>
+                <th>Date / Time</th>
+            </tr>
+        </thead>
+        <tbody id="recent-table-body"></tbody>
+    </table>
+
+    <script>
+        const TOTAL_CHAPTERS = 6; // Prologue + Chapters 1-5
+
+        function addRow(tbody, cells) {
+            const tr = document.createElement('tr');
+            cells.forEach((c) => {
+                const td = document.createElement('td');
+                if (c instanceof Node) td.appendChild(c);
+                else td.textContent = c;   // plain text only, never HTML
+                tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        }
+
+        function emptyRow(tbody, colspan, text) {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = colspan;
+            td.className = 'empty';
+            td.textContent = text;
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+        }
+
+        function fmtSeconds(s) {
+            s = Number(s) || 0;
+            return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+        }
+
+        async function loadData() {
+            let res;
+            try {
+                res = await fetch('api/admin_players.php', { cache: 'no-store' });
+            } catch (e) {
+                alert('Cannot reach the server. Is Apache running?');
+                return;
+            }
+            if (res.status === 401 || res.status === 403) {
+                alert('Access denied! Please log in as admin.');
+                window.location.href = 'login.html';
+                return;
+            }
+            const data = await res.json();
+
+            const body = document.getElementById('user-table-body');
+            body.innerHTML = '';
+            if (!data.players.length) emptyRow(body, 8, 'No players registered yet.');
+            data.players.forEach((p) => {
+                const btn = document.createElement('button');
+                btn.textContent = 'Delete';
+                btn.addEventListener('click', () => deleteUser(p.id, p.username));
+                addRow(body, [
+                    p.username,
+                    p.created_at || '-',
+                    p.last_login || 'Never',
+                    p.chapters_done + ' / ' + TOTAL_CHAPTERS,
+                    p.best_score,
+                    p.records,
+                    p.last_played || '-',
+                    btn
+                ]);
+            });
+
+            const rbody = document.getElementById('recent-table-body');
+            rbody.innerHTML = '';
+            if (!data.recent.length) emptyRow(rbody, 5, 'No game records saved yet.');
+            data.recent.forEach((r) => {
+                addRow(rbody, [
+                    r.username,
+                    r.chapter_key || '-',
+                    r.score,
+                    fmtSeconds(r.time_played_seconds),
+                    r.played_at
+                ]);
+            });
+        }
+
+        async function deleteUser(id, username) {
+            if (!confirm('Delete player "' + username + '" and all their saved records? This cannot be undone.')) return;
+            const res = await fetch('api/admin_delete_player.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id })
+            });
+            const result = await res.json();
+            if (!result.success) alert(result.error || 'Could not delete this player.');
+            loadData();
+        }
+
+        async function logout() {
+            try { await fetch('api/logout.php', { method: 'POST' }); } catch (e) {}
+            localStorage.removeItem('currentUser');
+            window.location.href = 'login.html';
+        }
+
+        loadData();
+    </script>
+</body>
+</html>
