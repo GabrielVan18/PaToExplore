@@ -1,39 +1,247 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Game Login & Registration</title>
-    <style>
-        body { font-family: Arial, sans-serif; background: #222; color: #fff; text-align: center; padding-top: 50px; }
-        .container { background: #333; padding: 20px; display: inline-block; border-radius: 8px; width: 300px; }
-        input { width: 90%; padding: 8px; margin: 10px 0; border-radius: 4px; border: none; }
-        button { width: 100%; padding: 10px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        button:hover { background: #218838; }
-        .toggle-btn { background: #007bff; margin-top: 5px; }
-        .toggle-btn:hover { background: #0056b3; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pato Explorer - Login</title>
+<style>
+    /* ============================================================
+       ASSETS - palitan ang path kung iba ang lokasyon sa project mo
+       ============================================================ */
+   @font-face {
+    font-family: "Tildunk";
+    src: url("assets/fonts/tildunk.otf") format("opentype");
+    font-display: swap;
+}
+
+:root {
+    --bg-village: url("assets/images/bg.png");
+    --banner-img: url("assets/images/ui/wood/banner_hexagon.png");
+    --plank-img:  url("assets/images/ui/wood/long_button.png");
+
+    /* Kulay galing sa MenuScene */
+    --overlay:  rgba(26, 18, 6, 0.32);
+    --cream:    #fff8e7;
+    --cream-2:  #f5e2c8;
+    --brown:    #3b2410;
+    --gold:     #d8b04a;
+    --panel:    #20222a;
+    --muted:    #c9cdd6;
+    --font: "Tildunk", Georgia, serif;
+}
+    * { box-sizing: border-box; }
+
+    html, body { height: 100%; margin: 0; }
+
+    body {
+        font-family: var(--font);
+        color: var(--cream);
+        /* village bg + dark overlay, parang coverFitImage + rectangle sa Phaser */
+        background:
+            linear-gradient(var(--overlay), var(--overlay)),
+            var(--bg-village) center / cover no-repeat,
+            linear-gradient(#6b8f4e, #3f5a2c); /* fallback kung wala pang image */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+    }
+
+    .stage {
+        width: 100%;
+        max-width: 400px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    /* ---------- Title banner ---------- */
+    .banner {
+        position: relative;
+        width: 100%;
+        max-width: 380px;
+        aspect-ratio: 460 / 166;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background:
+            var(--banner-img) center / 100% 100% no-repeat;
+        /* fallback na kahoy kung wala ang image */
+        background-color: transparent;
+    }
+    .banner.no-img {
+        background: linear-gradient(180deg, #c99a4a, #8a5a22);
+        border: 4px solid var(--brown);
+        border-radius: 14px;
+    }
+    .banner h1 {
+        margin: 0;
+        font-size: clamp(30px, 9vw, 46px);
+        font-weight: bold;
+        color: var(--cream);
+        letter-spacing: 1px;
+        -webkit-text-stroke: 0;
+        text-shadow:
+            -3px -3px 0 var(--brown), 3px -3px 0 var(--brown),
+            -3px  3px 0 var(--brown), 3px  3px 0 var(--brown),
+             0   -3px 0 var(--brown), 0    3px 0 var(--brown),
+            -3px  0   0 var(--brown), 3px  0   0 var(--brown),
+             2px  5px 6px rgba(0,0,0,.4);
+    }
+    .tagline {
+        margin: 6px 0 22px;
+        font-size: 18px;
+        color: var(--cream-2);
+        text-shadow: 1px 2px 3px rgba(0,0,0,.4);
+        text-align: center;
+    }
+
+    /* ---------- Panel (same look as the Chapters modal) ---------- */
+    .panel {
+        width: 100%;
+        background: var(--panel);
+        border: 3px solid var(--gold);
+        padding: 26px 26px 24px;
+        box-shadow: 0 10px 30px rgba(0,0,0,.45);
+    }
+    .panel h2 {
+        margin: 0;
+        text-align: center;
+        font-size: 22px;
+        font-weight: normal;
+        color: var(--cream);
+    }
+    .panel .sub {
+        margin: 6px 0 18px;
+        text-align: center;
+        font-size: 12px;
+        font-style: italic;
+        color: var(--muted);
+    }
+
+    #message {
+        min-height: 18px;
+        margin-bottom: 8px;
+        text-align: center;
+        font-size: 13px;
+        color: #ffd36b;
+    }
+
+    label.field { display: block; margin-bottom: 12px; }
+    label.field span {
+        display: block;
+        margin-bottom: 5px;
+        font-size: 13px;
+        color: var(--cream-2);
+    }
+    input {
+        width: 100%;
+        padding: 11px 12px;
+        font-family: var(--font);
+        font-size: 15px;
+        color: var(--cream);
+        background: #33363f;
+        border: 2px solid #555a66;
+        border-radius: 0;
+        outline: none;
+        transition: border-color .15s;
+    }
+    input::placeholder { color: #9aa0aa; }
+    input:focus { border-color: var(--gold); }
+
+    /* ---------- Wooden-Gold plank buttons ---------- */
+    .btn {
+        display: block;
+        width: 100%;
+        font-family: var(--font);
+        font-weight: bold;
+        color: var(--cream);
+        cursor: pointer;
+        border: 3px solid var(--brown);
+        text-shadow: 2px 2px 0 var(--brown);
+        transition: transform .08s, filter .15s;
+    }
+    .btn:hover  { filter: brightness(1.12); }
+    .btn:active { transform: translateY(2px); }
+    .btn:focus-visible { outline: 3px solid var(--cream); outline-offset: 2px; }
+
+    .btn-primary {
+        margin-top: 8px;
+        padding: 16px 12px;
+        font-size: 24px;
+        background:
+            var(--plank-img) center / 100% 100% no-repeat,
+            linear-gradient(180deg, #d9a74f 0%, #b27a2c 55%, #8a5a22 100%);
+        box-shadow: inset 0 2px 0 rgba(255,235,180,.55), inset 0 -4px 0 rgba(59,36,16,.45);
+    }
+    .btn-secondary {
+        margin-top: 12px;
+        padding: 10px 12px;
+        font-size: 14px;
+        color: var(--cream);
+        text-shadow: none;
+        background: #555a66;
+        border: 2px solid #3a3e48;
+    }
+    .btn-secondary:hover { background: #6b7180; filter: none; }
+
+    @media (prefers-reduced-motion: reduce) {
+        .btn, input { transition: none; }
+    }
+</style>
 </head>
 <body>
 
-    <div class="container">
-        <h2 id="form-title">Game Login</h2>
-        <div id="message" style="color: yellow; font-size: 14px;"></div>
-        
-        <input type="text" id="username" placeholder="Username">
-        <input type="password" id="password" placeholder="Password">
-        
-        <button id="submit-btn" onclick="handleAuth()">Login</button>
-        <button class="toggle-btn" onclick="toggleMode()">Switch to Registration</button>
-    </div>
+    <main class="stage">
+        <div class="banner" id="banner">
+            <h1>PATO EXPLORER</h1>
+        </div>
+        <p class="tagline">Where the river remembers</p>
+
+        <section class="panel">
+            <h2 id="form-title">Game Login</h2>
+            <p class="sub" id="form-sub">Sign in to continue your adventure</p>
+
+            <div id="message" role="alert"></div>
+
+            <label class="field">
+                <span>Username</span>
+                <input type="text" id="username" placeholder="Username" autocomplete="username">
+            </label>
+            <label class="field">
+                <span>Password</span>
+                <input type="password" id="password" placeholder="Password" autocomplete="current-password">
+            </label>
+
+            <button class="btn btn-primary" id="submit-btn" onclick="handleAuth()">Login</button>
+            <button class="btn btn-secondary toggle-btn" onclick="toggleMode()">Switch to Registration</button>
+        </section>
+    </main>
 
     <script>
         let isRegistering = false;
 
+        // Kung hindi ma-load ang banner image, gumamit ng CSS wood fallback
+        (function () {
+            const src = getComputedStyle(document.documentElement).getPropertyValue('--banner-img').match(/url\(["']?(.*?)["']?\)/);
+            if (!src) return;
+            const img = new Image();
+            img.onerror = () => document.getElementById('banner').classList.add('no-img');
+            img.src = src[1];
+        })();
+
+        // Enter key = Login / Register
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') handleAuth();
+        });
+
         function toggleMode() {
             isRegistering = !isRegistering;
             document.getElementById('form-title').innerText = isRegistering ? "Register Account" : "Game Login";
+            document.getElementById('form-sub').innerText = isRegistering ? "Create an account to start exploring" : "Sign in to continue your adventure";
             document.getElementById('submit-btn').innerText = isRegistering ? "Register" : "Login";
             document.querySelector('.toggle-btn').innerText = isRegistering ? "Already have an account? Login" : "Switch to Registration";
+            document.getElementById('password').autocomplete = isRegistering ? "new-password" : "current-password";
             document.getElementById('message').innerText = "";
         }
 

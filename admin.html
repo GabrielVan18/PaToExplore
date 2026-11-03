@@ -2,151 +2,391 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Admin Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Admin Dashboard - PaToExplore</title>
+
     <style>
-        body { font-family: Arial, sans-serif; background: #111; color: #fff; padding: 20px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #222; }
-        th, td { border: 1px solid #444; padding: 10px; text-align: center; }
-        th { background: #333; }
-        button { padding: 5px 10px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        button:hover { background: #c82333; }
-        .logout { background: #6c757d; margin-bottom: 20px; }
-        .logout:hover { background: #5a6268; }
-        .empty { color: #aaa; }
+        @font-face {
+            font-family: "Tildunk";
+            src: url("assets/fonts/tildunk.otf") format("opentype");
+            font-display: swap;
+        }
+
+        :root {
+            --bg-village: url("assets/images/bg.png");
+            --banner-img: url("assets/images/ui/wood/banner_hexagon.png");
+            --plank-img:  url("assets/images/ui/wood/long_button.png");
+
+            --overlay:  rgba(26, 18, 6, 0.32);
+            --cream:    #fff8e7;
+            --cream-2:  #f5e2c8;
+            --brown:    #3b2410;
+            --gold:     #d8b04a;
+            --panel:    #20222a;
+            --muted:    #c9cdd6;
+            --font: "Tildunk", Georgia, serif;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body { margin: 0; min-height: 100%; }
+
+        body {
+            font-family: var(--font);
+            color: var(--cream);
+            background:
+                linear-gradient(var(--overlay), var(--overlay)),
+                var(--bg-village) center / cover no-repeat fixed,
+                linear-gradient(#6b8f4e, #3f5a2c);
+            padding: 24px 16px 40px;
+        }
+
+        .stage {
+            width: 100%;
+            max-width: 760px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* ---------- Title banner ---------- */
+        .banner {
+            width: 100%;
+            max-width: 460px;
+            aspect-ratio: 460 / 166;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--banner-img) center / 100% 100% no-repeat;
+        }
+        .banner.no-img {
+            background: linear-gradient(180deg, #c99a4a, #8a5a22);
+            border: 4px solid var(--brown);
+            border-radius: 14px;
+        }
+        .banner h1 {
+            margin: 0;
+            padding: 0 14px;
+            font-size: clamp(22px, 6.5vw, 36px);
+            font-weight: bold;
+            color: var(--cream);
+            letter-spacing: 1px;
+            text-align: center;
+            text-shadow:
+                -3px -3px 0 var(--brown), 3px -3px 0 var(--brown),
+                -3px  3px 0 var(--brown), 3px  3px 0 var(--brown),
+                 0   -3px 0 var(--brown), 0    3px 0 var(--brown),
+                -3px  0   0 var(--brown), 3px  0   0 var(--brown),
+                 2px  5px 6px rgba(0,0,0,.4);
+        }
+        .tagline {
+            margin: 6px 0 18px;
+            font-size: 18px;
+            color: var(--cream-2);
+            text-shadow: 1px 2px 3px rgba(0,0,0,.4);
+            text-align: center;
+        }
+
+        /* ---------- Buttons ---------- */
+        .btn {
+            font-family: var(--font);
+            font-weight: bold;
+            color: var(--cream);
+            cursor: pointer;
+            border: 3px solid var(--brown);
+            text-shadow: 2px 2px 0 var(--brown);
+            transition: transform .08s, filter .15s;
+        }
+        .btn:hover  { filter: brightness(1.12); }
+        .btn:active { transform: translateY(2px); }
+        .btn:focus-visible { outline: 3px solid var(--cream); outline-offset: 2px; }
+
+        .btn-primary {
+            padding: 8px 16px;
+            font-size: 15px;
+            background:
+                var(--plank-img) center / 100% 100% no-repeat,
+                linear-gradient(180deg, #d9a74f 0%, #b27a2c 55%, #8a5a22 100%);
+            box-shadow: inset 0 2px 0 rgba(255,235,180,.55), inset 0 -4px 0 rgba(59,36,16,.45);
+        }
+
+        .btn-secondary {
+            padding: 9px 16px;
+            font-size: 14px;
+            text-shadow: none;
+            background: #555a66;
+            border: 2px solid #3a3e48;
+        }
+        .btn-secondary:hover { background: #6b7180; filter: none; }
+
+        .toolbar {
+            width: 100%;
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 14px;
+        }
+
+        /* ---------- Panel ---------- */
+        .panel {
+            width: 100%;
+            background: var(--panel);
+            border: 3px solid var(--gold);
+            padding: 22px 22px 24px;
+            box-shadow: 0 10px 30px rgba(0,0,0,.45);
+        }
+        .panel h2 {
+            margin: 0 0 4px;
+            text-align: center;
+            font-size: 22px;
+            font-weight: normal;
+            color: var(--cream);
+        }
+        .panel .sub {
+            margin: 0 0 14px;
+            text-align: center;
+            font-size: 12px;
+            font-style: italic;
+            color: var(--muted);
+        }
+
+        .message {
+            min-height: 18px;
+            margin: 0 0 8px;
+            text-align: center;
+            font-size: 13px;
+            color: #ffd36b;
+        }
+
+        /* ---------- Table ---------- */
+        .table-wrap {
+            width: 100%;
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #2a2d36;
+        }
+        th, td {
+            border: 2px solid #555a66;
+            padding: 12px;
+            text-align: center;
+            font-size: 14px;
+            color: var(--cream);
+        }
+        th {
+            background: #33363f;
+            color: var(--gold);
+            font-weight: bold;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+        tbody tr:hover td { background: #353945; }
+
+        .username {
+            color: var(--gold);
+            cursor: pointer;
+            text-decoration: underline;
+            font-weight: bold;
+        }
+        .username:hover { color: var(--cream); }
+
+        .empty {
+            color: var(--muted);
+            padding: 20px;
+            font-style: italic;
+        }
+
+        @media (max-width: 600px) {
+            body { padding: 16px 10px 32px; }
+            .panel { padding: 18px 12px 20px; }
+            th, td { padding: 8px; font-size: 13px; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .btn { transition: none; }
+        }
     </style>
 </head>
+
 <body>
 
-    <h1>Admin Dashboard - PaToExplore</h1>
-    <button class="logout" onclick="logout()">Logout</button>
+    <main class="stage">
+        <div class="banner" id="banner">
+            <h1>ADMIN DASHBOARD</h1>
+        </div>
+        <p class="tagline">Where the river remembers</p>
 
-    <h3>List of Players</h3>
-    <table>
-        <thead>
-            <tr>
-                <th>Username</th>
-                <th>Registered</th>
-                <th>Last Login</th>
-                <th>Chapters Done</th>
-                <th>Best Score</th>
-                <th>Saved Records</th>
-                <th>Last Played</th>
-                <th>Action</th>
-            </tr>
-        </thead>
-        <tbody id="user-table-body"></tbody>
-    </table>
+        <div class="toolbar">
+            <button class="btn btn-secondary" id="logout-btn">Logout</button>
+        </div>
 
-    <h3 style="margin-top:40px;">Recent Activity (latest 20)</h3>
-    <table>
-        <thead>
-            <tr>
-                <th>Player</th>
-                <th>Chapter Finished</th>
-                <th>Score</th>
-                <th>Time in Session</th>
-                <th>Date / Time</th>
-            </tr>
-        </thead>
-        <tbody id="recent-table-body"></tbody>
-    </table>
+        <section class="panel">
+            <h2>List of Players</h2>
+            <p class="sub">Select a player to view their records</p>
+
+            <p id="status-message" class="message" role="alert"></p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="user-table-body">
+                        <tr>
+                            <td colspan="2" class="empty">
+                                Loading players...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
 
     <script>
-        const TOTAL_CHAPTERS = 6; // Prologue + Chapters 1-5
+        // Kung hindi ma-load ang banner image, gumamit ng CSS wood fallback
+        (function () {
+            const src = getComputedStyle(document.documentElement)
+                .getPropertyValue('--banner-img')
+                .match(/url\(["']?(.*?)["']?\)/);
+            if (!src) return;
+            const img = new Image();
+            img.onerror = () => document.getElementById('banner').classList.add('no-img');
+            img.src = src[1];
+        })();
 
-        function addRow(tbody, cells) {
-            const tr = document.createElement('tr');
-            cells.forEach((c) => {
-                const td = document.createElement('td');
-                if (c instanceof Node) td.appendChild(c);
-                else td.textContent = c;   // plain text only, never HTML
-                tr.appendChild(td);
-            });
-            tbody.appendChild(tr);
-        }
-
-        function emptyRow(tbody, colspan, text) {
-            const tr = document.createElement('tr');
-            const td = document.createElement('td');
-            td.colSpan = colspan;
-            td.className = 'empty';
-            td.textContent = text;
-            tr.appendChild(td);
-            tbody.appendChild(tr);
-        }
-
-        function fmtSeconds(s) {
-            s = Number(s) || 0;
-            return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
-        }
-
+        // Load registered players from the existing API.
         async function loadData() {
-            let res;
-            try {
-                res = await fetch('api/admin_players.php', { cache: 'no-store' });
-            } catch (e) {
-                alert('Cannot reach the server. Is Apache running?');
-                return;
-            }
-            if (res.status === 401 || res.status === 403) {
-                alert('Access denied! Please log in as admin.');
-                window.location.href = 'login.html';
-                return;
-            }
-            const data = await res.json();
-
             const body = document.getElementById('user-table-body');
-            body.innerHTML = '';
-            if (!data.players.length) emptyRow(body, 8, 'No players registered yet.');
-            data.players.forEach((p) => {
-                const btn = document.createElement('button');
-                btn.textContent = 'Delete';
-                btn.addEventListener('click', () => deleteUser(p.id, p.username));
-                addRow(body, [
-                    p.username,
-                    p.created_at || '-',
-                    p.last_login || 'Never',
-                    p.chapters_done + ' / ' + TOTAL_CHAPTERS,
-                    p.best_score,
-                    p.records,
-                    p.last_played || '-',
-                    btn
-                ]);
-            });
+            const statusMessage =
+                document.getElementById('status-message');
 
-            const rbody = document.getElementById('recent-table-body');
-            rbody.innerHTML = '';
-            if (!data.recent.length) emptyRow(rbody, 5, 'No game records saved yet.');
-            data.recent.forEach((r) => {
-                addRow(rbody, [
-                    r.username,
-                    r.chapter_key || '-',
-                    r.score,
-                    fmtSeconds(r.time_played_seconds),
-                    r.played_at
-                ]);
-            });
+            body.replaceChildren();
+            statusMessage.textContent = '';
+
+            try {
+                const res = await fetch('api/admin_players.php', {
+                    cache: 'no-store'
+                });
+
+                if (res.status === 401 || res.status === 403) {
+                    alert('Access denied! Please log in as admin.');
+                    window.location.href = 'login.html';
+                    return;
+                }
+
+                if (!res.ok) {
+                    throw new Error('Unable to load players.');
+                }
+
+                const data = await res.json();
+
+                if (!Array.isArray(data.players)) {
+                    throw new Error('Invalid player data.');
+                }
+
+                if (data.players.length === 0) {
+                    const tr = document.createElement('tr');
+                    const td = document.createElement('td');
+
+                    td.colSpan = 2;
+                    td.className = 'empty';
+                    td.textContent = 'No players registered yet.';
+
+                    tr.appendChild(td);
+                    body.appendChild(tr);
+                    return;
+                }
+
+                data.players.forEach(function(player) {
+                    const tr = document.createElement('tr');
+                    const usernameCell = document.createElement('td');
+                    const actionCell = document.createElement('td');
+
+                    const username = document.createElement('span');
+                    username.className = 'username';
+                    username.textContent = player.username;
+
+                    username.addEventListener('click', function() {
+                        openPlayerRecords(player.id);
+                    });
+
+                    usernameCell.appendChild(username);
+
+                    const button = document.createElement('button');
+                    button.className = 'btn btn-primary view-btn';
+                    button.textContent = 'View Records';
+
+                    button.addEventListener('click', function() {
+                        openPlayerRecords(player.id);
+                    });
+
+                    actionCell.appendChild(button);
+
+                    tr.appendChild(usernameCell);
+                    tr.appendChild(actionCell);
+
+                    body.appendChild(tr);
+                });
+
+            } catch (error) {
+                console.error('Error loading players:', error);
+
+                body.replaceChildren();
+
+                const tr = document.createElement('tr');
+                const td = document.createElement('td');
+
+                td.colSpan = 2;
+                td.className = 'empty';
+                td.textContent = 'Unable to load players.';
+
+                tr.appendChild(td);
+                body.appendChild(tr);
+
+                statusMessage.textContent =
+                    'Check Apache, MySQL, and api/admin_players.php.';
+            }
         }
 
-        async function deleteUser(id, username) {
-            if (!confirm('Delete player "' + username + '" and all their saved records? This cannot be undone.')) return;
-            const res = await fetch('api/admin_delete_player.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: id })
-            });
-            const result = await res.json();
-            if (!result.success) alert(result.error || 'Could not delete this player.');
-            loadData();
+        // Open the selected player's records page.
+        function openPlayerRecords(playerId) {
+            if (playerId === undefined || playerId === null) {
+                alert('Hindi makita ang player ID.');
+                return;
+            }
+
+            window.location.href =
+                'admin_player_records.html?id=' +
+                encodeURIComponent(playerId);
         }
 
+        // Log out the administrator.
         async function logout() {
-            try { await fetch('api/logout.php', { method: 'POST' }); } catch (e) {}
+            try {
+                await fetch('api/logout.php', {
+                    method: 'POST'
+                });
+            } catch (error) {
+                console.error('Logout request failed:', error);
+            }
+
             localStorage.removeItem('currentUser');
             window.location.href = 'login.html';
         }
 
+        document.getElementById('logout-btn')
+            .addEventListener('click', logout);
+
         loadData();
     </script>
+
 </body>
 </html>

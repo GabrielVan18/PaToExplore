@@ -3,8 +3,28 @@
 // resets every time the page reloads). This is what powers the "Chapter"
 // menu on the title screen: a chapter only shows up as playable there once
 // it's actually been reached, and that stays true across reloads/sessions.
+//
+// Progress is saved PER ACCOUNT: every localStorage key below gets the
+// logged-in player's id appended (set by login.html in 'currentUser'), so a
+// newly registered account always starts at the Prologue instead of
+// inheriting whatever the previous player on this browser finished.
 const ChapterProgress = (() => {
-  const STORAGE_KEY = 'patoExplorer.unlockedChapters';
+  const BASE_STORAGE_KEY = 'patoExplorer.unlockedChapters';
+  const BASE_JOURNAL_KEY = 'patoExplorer.journalPages';
+
+  // '.u<id>' for a logged-in player, '.guest' when nobody is logged in.
+  function userSuffix() {
+    try {
+      const u = JSON.parse(localStorage.getItem('currentUser'));
+      if (u && u.id !== undefined && u.id !== null) return '.u' + u.id;
+    } catch (e) {
+      // unreadable currentUser - treat as guest
+    }
+    return '.guest';
+  }
+
+  function storageKey() { return BASE_STORAGE_KEY + userSuffix(); }
+  function journalKey() { return BASE_JOURNAL_KEY + userSuffix(); }
 
   // Order matters: finishing chapter N unlocks chapter N+1. Prologue is
   // always unlocked - it's what "Start" plays from the very beginning.
@@ -19,7 +39,7 @@ const ChapterProgress = (() => {
 
   function load() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(storageKey());
       if (!raw) return ['Prologue'];
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed) || parsed.length === 0) return ['Prologue'];
@@ -34,7 +54,7 @@ const ChapterProgress = (() => {
 
   function save(list) {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+      localStorage.setItem(storageKey(), JSON.stringify(list));
     } catch (e) {
       // Fails silently - progress just won't persist across reloads
       // this session (e.g. private browsing with storage disabled).
@@ -55,7 +75,7 @@ const ChapterProgress = (() => {
 
   // Call this right when a chapter is completed - unlocks whichever
   // chapter comes next in CHAPTER_ORDER, if any.
-   function unlockNextAfter(key) {
+  function unlockNextAfter(key) {
     const idx = CHAPTER_ORDER.findIndex((c) => c.key === key);
     if (idx === -1) return;
 
@@ -71,13 +91,13 @@ const ChapterProgress = (() => {
       updatePlayerScore(currentProgressScore, key);
     }
   }
+
   // ---- Journal pages ------------------------------------------------------
   // Which journal pages the player has collected: 0 = Prologue, 1-5 = the
   // chapters. Saved separately from the unlocked chapters so a finished
   // chapter's page is still readable after a reload. The Journal book
   // (journalBook.js) reads these; the chapter scenes add to them when a
   // chapter is finished.
-  const JOURNAL_KEY = 'patoExplorer.journalPages';
   const MAX_JOURNAL_PAGE = CHAPTER_ORDER.length - 1;
 
   function cleanPages(list) {
@@ -91,7 +111,7 @@ const ChapterProgress = (() => {
 
   function getJournalPages() {
     try {
-      const raw = localStorage.getItem(JOURNAL_KEY);
+      const raw = localStorage.getItem(journalKey());
       return raw ? cleanPages(JSON.parse(raw)) : [];
     } catch (e) {
       return [];
@@ -100,7 +120,7 @@ const ChapterProgress = (() => {
 
   function saveJournalPages(list) {
     try {
-      localStorage.setItem(JOURNAL_KEY, JSON.stringify(list));
+      localStorage.setItem(journalKey(), JSON.stringify(list));
     } catch (e) {
       // Same as save(): fails silently, pages just won't persist this session.
     }

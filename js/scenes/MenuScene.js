@@ -92,57 +92,58 @@ const logoutBtn = createWoodButton(this, width - 90, 40, 'Log Out', () => {
   // state is read straight from localStorage (via ChapterProgress), so it
   // survives page reloads instead of resetting like the in-memory registry.
   showChapterSelect() {
-    const { width, height } = this.scale;
+  const { width, height } = this.scale;
 
-    const candidates = ChapterProgress.CHAPTER_ORDER.filter(
-      (c) => !!this.scene.manager.keys[c.key]
-    );
+  const candidates = ChapterProgress.CHAPTER_ORDER.filter(
+    (c) => !!this.scene.manager.keys[c.key]
+  );
 
-    const container = this.add.container(0, 0).setDepth(2000);
-    const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.55)
-      .setInteractive();
+  // Chapter 6: ipinapakita lang, naka-lock palagi
+  const rows = candidates.concat([{ label: 'Chapter 6', comingSoon: true }]);
 
-    const rowH = 44;
-    const panelH = 96 + candidates.length * rowH;
-    const panel = this.add.rectangle(width / 2, height / 2, 320, panelH, 0x20222a, 1)
-      .setStrokeStyle(3, 0xd8b04a);
-    const top = height / 2 - panelH / 2;
+  const container = this.add.container(0, 0).setDepth(2000);
+  const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.55)
+    .setInteractive();
 
-    const title = this.add.text(width / 2, top + 30, 'Chapters', {
-      fontFamily: '"Tildunk", Georgia, serif', fontSize: 22, color: '#fff8e7'
-    }).setOrigin(0.5);
-    const sub = this.add.text(width / 2, top + 54, 'Jump back into any chapter you\u2019ve reached', {
-      fontFamily: '"Tildunk", sans-serif', fontSize: 11, color: '#c9cdd6', fontStyle: 'italic'
-    }).setOrigin(0.5);
+  const rowH = 44;
+  const panelH = 96 + rows.length * rowH;
+  const panel = this.add.rectangle(width / 2, height / 2, 320, panelH, 0x20222a, 1)
+    .setStrokeStyle(3, 0xd8b04a);
+  const top = height / 2 - panelH / 2;
 
-    container.add([overlay, panel, title, sub]);
+  const title = this.add.text(width / 2, top + 30, 'Chapters', {
+    fontFamily: '"Tildunk", Georgia, serif', fontSize: 22, color: '#fff8e7'
+  }).setOrigin(0.5);
+  const sub = this.add.text(width / 2, top + 54, 'Jump back into any chapter you\u2019ve reached', {
+    fontFamily: '"Tildunk", sans-serif', fontSize: 11, color: '#c9cdd6', fontStyle: 'italic'
+  }).setOrigin(0.5);
 
-    candidates.forEach((c, i) => {
-      const y = top + 84 + i * rowH;
-      const unlocked = ChapterProgress.isUnlocked(c.key);
+  container.add([overlay, panel, title, sub]);
 
-      if (unlocked) {
-        const { rect, txt } = createButton(this, width / 2, y, `\u2713 ${c.label}`, () => {
-          container.destroy();
-          curtainClose(this, () => this.scene.start(c.key));
-        }, { width: 260, height: 34, fontSize: 14 });
-        container.add([rect, txt]);
-      } else {
-        // Locked entry: same footprint as a button, but not interactive -
-        // dimmed and marked with a lock, so it reads as "not yet playable"
-        // rather than just a disabled-looking button.
-        const rect = this.add.rectangle(width / 2, y, 260, 34, 0x33363f, 0.7)
-          .setStrokeStyle(2, 0x555a66);
-        const txt = this.add.text(width / 2, y, `\u{1F512} ${c.label}`, {
-          fontFamily: '"Tildunk", Georgia, serif', fontSize: 14, color: '#9aa0aa'
-        }).setOrigin(0.5);
-        container.add([rect, txt]);
-      }
-    });
+  rows.forEach((c, i) => {
+    const y = top + 84 + i * rowH;
+    const unlocked = !c.comingSoon && ChapterProgress.isUnlocked(c.key);
 
-    const { rect: closeRect, txt: closeTxt } = createButton(this, width / 2, top + panelH - 28, 'Close', () => {
-      container.destroy();
-    }, { width: 120, height: 32, fontSize: 13, color: 0x555a66, hoverColor: 0x6b7180 });
-    container.add([closeRect, closeTxt]);
-  }
+    if (unlocked) {
+      const { rect, txt } = createButton(this, width / 2, y, `\u2713 ${c.label}`, () => {
+        container.destroy();
+        curtainClose(this, () => this.scene.start(c.key));
+      }, { width: 260, height: 34, fontSize: 14 });
+      container.add([rect, txt]);
+    } else {
+      const rect = this.add.rectangle(width / 2, y, 260, 34, 0x33363f, 0.7)
+        .setStrokeStyle(2, 0x555a66);
+      const label = c.comingSoon ? `\u{1F512} ${c.label} (Coming soon)` : `\u{1F512} ${c.label}`;
+      const txt = this.add.text(width / 2, y, label, {
+        fontFamily: '"Tildunk", Georgia, serif', fontSize: 14, color: '#9aa0aa'
+      }).setOrigin(0.5);
+      container.add([rect, txt]);
+    }
+  });
+
+  const { rect: closeRect, txt: closeTxt } = createButton(this, width / 2, top + panelH - 28, 'Close', () => {
+    container.destroy();
+  }, { width: 120, height: 32, fontSize: 13, color: 0x555a66, hoverColor: 0x6b7180 });
+  container.add([closeRect, closeTxt]);
+}
 }

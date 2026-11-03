@@ -2684,6 +2684,8 @@ const CHAPTER5_EXPLORE_SPOTS = [
 // frame 0 of each is that character's down-facing idle pose, same static-
 // frame convention as Ate Clara/Maya above. Positions were chosen to sit on
 // open walkable ground, clear of every collidable object on the map.
+// x/y is each NPC's "home" spot: they wander around it (see
+// updateCameoNpcs) but never stray further than C5_NPC_WANDER_RADIUS.
 // `lines` / `portraits` are what they say when talked to: one portrait key
 // per line (same portraits their own chapters use), edit freely.
 const CHAPTER5_CAMEO_NPCS = [
@@ -2720,6 +2722,20 @@ const CHAPTER5_CAMEO_NPCS = [
     portraits: ['mang-carding-happy', 'mang-carding-wink']
   }
 ];
+
+// --- Cameo NPC wandering ----------------------------------------------------
+// Each cameo walks a short stretch in one of 4 directions, pauses, then picks
+// another. They stay within C5_NPC_WANDER_RADIUS of their home spot, stop and
+// face the player when the player is close (or a dialogue/modal is open).
+const C5_NPC_WALK_SPEED = 38;          // slower than the player
+const C5_NPC_WANDER_RADIUS = 110;      // farthest from home spot (px)
+const C5_NPC_WALK_MIN_MS = 900;
+const C5_NPC_WALK_MAX_MS = 2200;
+const C5_NPC_PAUSE_MIN_MS = 1200;
+const C5_NPC_PAUSE_MAX_MS = 3200;
+// Same convention as the player: art faces LEFT by default, so flipX = moving
+// right. Set to false if an NPC looks backwards while walking sideways.
+const C5_NPC_ART_FACES_LEFT_BY_DEFAULT = true;
 
 // What the two hosts say when talked to during the explore beat. Maya's
 // lines are a function of the scene so she can report live progress, same
@@ -2898,18 +2914,18 @@ class Chapter5Scene extends Phaser.Scene {
       tileTypes: buildChapter5TileTypes(CHAPTER5_MAP_DATA)
     });
 
-// --- player ---
-     this.createPlayerAnims(textureKey);
-     const startX = CHAPTER5_MAP_DATA.spawn.x;
-     const startY = CHAPTER5_MAP_DATA.spawn.y;
-     this.player = this.physics.add.sprite(startX, startY, textureKey, 0);
-     this.player.setCollideWorldBounds(true);
-     this.player.setSize(C5_FRAME_W * 0.5, C5_FRAME_H * 0.35);
-     this.player.setOffset(C5_FRAME_W * 0.25, C5_FRAME_H * 0.6);
-     this.player.facing = 'up';
-     // Ensure player renders above NPCs and objects
-     this.player.setDepth(10000);
-     this.physics.add.collider(this.player, this.map.obstacles);
+    // --- player ---
+    this.createPlayerAnims(textureKey);
+    const startX = CHAPTER5_MAP_DATA.spawn.x;
+    const startY = CHAPTER5_MAP_DATA.spawn.y;
+    this.player = this.physics.add.sprite(startX, startY, textureKey, 0);
+    this.player.setCollideWorldBounds(true);
+    this.player.setSize(C5_FRAME_W * 0.5, C5_FRAME_H * 0.35);
+    this.player.setOffset(C5_FRAME_W * 0.25, C5_FRAME_H * 0.6);
+    this.player.facing = 'up';
+    // Ensure player renders above NPCs and objects
+    this.player.setDepth(10000);
+    this.physics.add.collider(this.player, this.map.obstacles);
 
     // Pokemon-style camera: player stays pinned to the center of the
     // screen, the map scrolls underneath them. See mapLoader.js.
@@ -2932,56 +2948,67 @@ class Chapter5Scene extends Phaser.Scene {
     // Same pattern for the explore beat - see handleExploreKeyPress.
     this.input.keyboard.on('keydown-E', () => this.handleExploreKeyPress());
 
-// --- Ate Clara & Maya --- (real sprite sheets, same 44x78 grid
-     // convention as hiraya-sheet/lola-sheet/donemilio-sheet/kapitanandres-sheet/
-     // mangcarding-sheet - frame 0 is each of their down-facing idle poses).
-     // Positioned relative to the map's own spawn point so they stay put in
-     // the plaza clearing even if the exported map's spawn tile ever moves.
-     this.ateClara = this.add.sprite(startX, startY - 62, 'ateclara-sheet', 0);
-     this.maya = this.add.sprite(startX + 60, startY - 46, 'maya-sheet', 0).setFlipX(true);
-     // Static collision bodies sized to almost the whole sprite (not just the
-     // feet) so the player can't walk into/overlap Ate Clara or Maya from any
-     // side - top, bottom, or left/right. NOTE: Phaser's setSize(w, h, center)
-     // only takes 3 params - passing a 4th offset value here used to silently
-     // do nothing, and the truthy 3rd value made it auto-center the box in
-     // the middle of the sprite instead, which is why the player used to be
-     // able to walk in as far as waist/chest before colliding. setOffset()
-     // must be called separately, after setSize(..., false) disables the
-     // auto-centering.
-     this.physics.add.existing(this.ateClara, true);
-     this.ateClara.body.setSize(C5_FRAME_W * 0.6, C5_FRAME_H * 0.85, false);
-     this.ateClara.body.setOffset(C5_FRAME_W * 0.2, C5_FRAME_H * 0.08);
-     this.physics.add.existing(this.maya, true);
-     this.maya.body.setSize(C5_FRAME_W * 0.6, C5_FRAME_H * 0.85, false);
-     this.maya.body.setOffset(C5_FRAME_W * 0.2, C5_FRAME_H * 0.08);
-     this.physics.add.collider(this.player, [this.ateClara, this.maya]);
-     // Ensure Ate Clara and Maya render below player
-     this.ateClara.setDepth(0);
-     this.maya.setDepth(0);
+    // --- Ate Clara & Maya --- (real sprite sheets, same 44x78 grid
+    // convention as hiraya-sheet/lola-sheet/donemilio-sheet/kapitanandres-sheet/
+    // mangcarding-sheet - frame 0 is each of their down-facing idle poses).
+    // Positioned relative to the map's own spawn point so they stay put in
+    // the plaza clearing even if the exported map's spawn tile ever moves.
+    this.ateClara = this.add.sprite(startX, startY - 62, 'ateclara-sheet', 0);
+    this.maya = this.add.sprite(startX + 60, startY - 46, 'maya-sheet', 0).setFlipX(true);
+    // Static collision bodies sized to almost the whole sprite (not just the
+    // feet) so the player can't walk into/overlap Ate Clara or Maya from any
+    // side - top, bottom, or left/right. NOTE: Phaser's setSize(w, h, center)
+    // only takes 3 params - setOffset() must be called separately, after
+    // setSize(..., false) disables the auto-centering.
+    this.physics.add.existing(this.ateClara, true);
+    this.ateClara.body.setSize(C5_FRAME_W * 0.6, C5_FRAME_H * 0.85, false);
+    this.ateClara.body.setOffset(C5_FRAME_W * 0.2, C5_FRAME_H * 0.08);
+    this.physics.add.existing(this.maya, true);
+    this.maya.body.setSize(C5_FRAME_W * 0.6, C5_FRAME_H * 0.85, false);
+    this.maya.body.setOffset(C5_FRAME_W * 0.2, C5_FRAME_H * 0.08);
+    this.physics.add.collider(this.player, [this.ateClara, this.maya]);
+    // Ensure Ate Clara and Maya render below player
+    this.ateClara.setDepth(0);
+    this.maya.setDepth(0);
 
-     // "Report back" step - once all 4 landmarks are found the player has to
-     // walk back and press E on Ate Clara or Maya before the next dialogue
-     // starts (same idea as Chapter1Scene's returnFlag / reportDone with
-     // Lola). The ❗ flags sit above each host and only show while a report
-     // is pending - see onAllTracesFound() / finishExploration().
-     this.reportDone = false;
-     this.returnFlags = [this.ateClara, this.maya].map(n =>
-       this.add.text(n.x, n.y - 60, '❗', { fontSize: 26 })
-         .setOrigin(0.5).setDepth(100000).setVisible(false));
+    // "Report back" step - once all 4 landmarks are found the player has to
+    // walk back and press E on Ate Clara or Maya before the next dialogue
+    // starts (same idea as Chapter1Scene's returnFlag / reportDone with
+    // Lola). The ❗ flags sit above each host and only show while a report
+    // is pending - see onAllTracesFound() / finishExploration().
+    this.reportDone = false;
+    this.returnFlags = [this.ateClara, this.maya].map(n =>
+      this.add.text(n.x, n.y - 60, '❗', { fontSize: 26 })
+        .setOrigin(0.5).setDepth(100000).setVisible(false));
 
     // --- cameo NPCs (see CHAPTER5_CAMEO_NPCS) - Lola/Don Emilio/Kapitan
-    // Andres/Mang Carding standing around the plaza, static frame 0 only,
-    // same collider treatment as Ate Clara/Maya above so the player can't
-    // walk through them, but no dialogue wired up - purely a background
-    // cameo for the final chapter.
+    // Andres/Mang Carding wandering around their home spots. They now have
+    // DYNAMIC physics bodies (so they can move) with a feet-only hitbox, the
+    // same as the player. Ate Clara and Maya stay static and don't move.
+    this.cameoHasWalk = {};
     this.cameoObstacles = CHAPTER5_CAMEO_NPCS.map(n => {
+      this.cameoHasWalk[n.sheet] = this.createNpcAnims(n.sheet);
       const spr = this.add.sprite(n.x, n.y, n.sheet, 0).setFlipX(!!n.flip).setDepth(n.y);
-      this.physics.add.existing(spr, true);
-      spr.body.setSize(C5_FRAME_W * 0.6, C5_FRAME_H * 0.85, false);
-      spr.body.setOffset(C5_FRAME_W * 0.2, C5_FRAME_H * 0.08);
+      this.physics.add.existing(spr); // dynamic body
+      spr.body.setSize(C5_FRAME_W * 0.5, C5_FRAME_H * 0.35);
+      spr.body.setOffset(C5_FRAME_W * 0.25, C5_FRAME_H * 0.6);
+      spr.body.setCollideWorldBounds(true);
+      spr.npcSheet = n.sheet;
+      spr.npcState = {
+        homeX: n.x, homeY: n.y,
+        facing: 'down', dir: null, moving: false,
+        nextAt: this.time.now + Phaser.Math.Between(0, C5_NPC_PAUSE_MAX_MS)
+      };
       return spr;
     });
-    this.physics.add.collider(this.player, this.cameoObstacles);
+    // Player vs NPC: the NPC is made immovable just for this collision so the
+    // player can't push them around. (Arcade physics can't separate two
+    // immovable bodies, so it's toggled per-collider - see the colliders
+    // against the map/decor further down, which set it back to false.)
+    this.physics.add.collider(this.player, this.cameoObstacles, null, (p, npc) => {
+      npc.body.immovable = true;
+      return true;
+    });
 
     // --- everyone the player can talk to during the explore beat: the two
     // hosts plus the four cameos (see CHAPTER5_HOST_TALK / CHAPTER5_CAMEO_NPCS
@@ -3059,18 +3086,24 @@ class Chapter5Scene extends Phaser.Scene {
         // exported JSON has them as collidable: false.
         if (o.collidable || CHAPTER5_TREE_KEYS.has(o.key) || CHAPTER5_SOLID_DECOR_KEYS.has(o.key)) {
           this.physics.add.existing(vis, true);
-          // Same fix as the explore landmarks above: if this object's
-          // exported w/h (from the map editor) differs at all from its
-          // source texture's native size, the static body defaults to the
-          // texture's native size instead of what's actually drawn - giving
-          // an invisible collider bigger (or offset) than the visible
-          // sprite, which is exactly what blocks the player from getting
-          // close enough to interact with something like a house/kiosk.
+          // Same fix as the explore landmarks above: resync the static body
+          // to the displayed size instead of the texture's native size.
           if (hasImage) vis.body.updateFromGameObject();
           this.decorObstacles.push(vis);
         }
       });
     this.physics.add.collider(this.player, this.decorObstacles);
+
+    // --- cameo NPCs vs the world: so the wandering NPCs can't walk through
+    // water/walls/trees, houses and other decor, the landmarks, or Ate Clara
+    // and Maya. The process callback turns "immovable" back off so the NPC
+    // (not the scenery) is the one that gets separated. These must come after
+    // decorObstacles and exploreObjects exist, which is why they live here.
+    const npcMobile = (npc) => { npc.body.immovable = false; return true; };
+    this.physics.add.collider(this.cameoObstacles, this.map.obstacles, null, npcMobile);
+    this.physics.add.collider(this.cameoObstacles, this.decorObstacles, null, npcMobile);
+    this.physics.add.collider(this.cameoObstacles, this.exploreObjects.map(o => o.rect), null, npcMobile);
+    this.physics.add.collider(this.cameoObstacles, [this.ateClara, this.maya], null, npcMobile);
 
     // --- ambient pond ducks (see C5_DUCK_AREA) - purely scenery: they
     // wander, spook away from the player, and never block or affect the
@@ -3183,6 +3216,120 @@ class Chapter5Scene extends Phaser.Scene {
     if (!this.anims.exists(`${p}-walk-side`)) {
       this.anims.create({ key: `${p}-walk-side`, frames: this.anims.generateFrameNumbers(textureKey, { start: 24, end: 34 }), frameRate: 12, repeat: -1 });
     }
+  }
+
+  // --------------------------------------------------------------------
+  // Cameo NPC wandering
+  // --------------------------------------------------------------------
+
+  // Builds walk animations for one NPC sheet, assuming the same frame layout
+  // as the player sheets (down 0-11, up 12-19, side 24-34). If the sheet has
+  // too few frames, returns false and the NPC just slides without animating.
+  // If an NPC's sheet uses a different layout, edit `defs` below.
+  createNpcAnims(sheet) {
+    if (!this.textures.exists(sheet)) return false;
+    const total = this.textures.get(sheet).frameTotal - 1; // minus __BASE
+    if (total < 35) return false;
+    const defs = [
+      ['down', 0, 11, 12],
+      ['up', 12, 19, 10],
+      ['side', 24, 34, 12]
+    ];
+    defs.forEach(([dir, start, end, rate]) => {
+      const key = `${sheet}-walk-${dir}`;
+      if (!this.anims.exists(key)) {
+        this.anims.create({
+          key,
+          frames: this.anims.generateFrameNumbers(sheet, { start, end }),
+          frameRate: rate,
+          repeat: -1
+        });
+      }
+    });
+    return true;
+  }
+
+  setNpcFacing(s, facing, vx) {
+    s.npcState.facing = facing;
+    if (facing === 'side') {
+      s.flipX = C5_NPC_ART_FACES_LEFT_BY_DEFAULT ? vx > 0 : vx < 0;
+    } else {
+      s.flipX = false;
+    }
+  }
+
+  setNpcIdle(s) {
+    const st = s.npcState;
+    st.moving = false;
+    if (s.anims) s.anims.stop();
+    if (this.cameoHasWalk[s.npcSheet]) {
+      s.setFrame({ down: 0, up: 12, side: 24 }[st.facing]);
+    } else {
+      s.setFrame(0);
+    }
+  }
+
+  // Runs every frame (see update()). Walk a bit -> pause -> walk another way,
+  // tethered to the NPC's home spot. Freezes while a dialogue/modal is open
+  // or the player is within talking range, and turns to face the player.
+  updateCameoNpcs(time) {
+    if (!this.cameoObstacles) return;
+    const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+    this.cameoObstacles.forEach(s => {
+      const st = s.npcState;
+      const b = s.body;
+      if (!b) return;
+      const distP = Phaser.Math.Distance.Between(this.player.x, this.player.y, s.x, s.y);
+
+      if (this.locked || distP < INTERACT_RADIUS) {
+        b.setVelocity(0, 0);
+        if (distP < INTERACT_RADIUS) {
+          const dx = this.player.x - s.x, dy = this.player.y - s.y;
+          if (Math.abs(dx) > Math.abs(dy)) this.setNpcFacing(s, 'side', dx);
+          else this.setNpcFacing(s, dy < 0 ? 'up' : 'down', 0);
+        }
+        this.setNpcIdle(s);
+        st.nextAt = Math.max(st.nextAt, time + 600);
+        s.setDepth(s.y);
+        return;
+      }
+
+      const blocked = st.moving &&
+        (b.blocked.left || b.blocked.right || b.blocked.up || b.blocked.down ||
+         b.touching.left || b.touching.right || b.touching.up || b.touching.down);
+
+      if (time > st.nextAt || blocked) {
+        if (st.moving && !blocked) {
+          // finished walking -> rest
+          b.setVelocity(0, 0);
+          this.setNpcIdle(s);
+          st.nextAt = time + Phaser.Math.Between(C5_NPC_PAUSE_MIN_MS, C5_NPC_PAUSE_MAX_MS);
+        } else {
+          // pick a new direction (different from the last one)
+          const farFromHome = Phaser.Math.Distance.Between(s.x, s.y, st.homeX, st.homeY) > C5_NPC_WANDER_RADIUS;
+          let dir;
+          if (farFromHome) {
+            const hx = st.homeX - s.x, hy = st.homeY - s.y;
+            dir = Math.abs(hx) > Math.abs(hy) ? [Math.sign(hx), 0] : [0, Math.sign(hy)];
+          } else {
+            const options = DIRS.filter(d => d !== st.dir);
+            dir = Phaser.Utils.Array.GetRandom(options);
+          }
+          st.dir = dir;
+          st.moving = true;
+          b.setVelocity(dir[0] * C5_NPC_WALK_SPEED, dir[1] * C5_NPC_WALK_SPEED);
+          if (dir[0] !== 0) this.setNpcFacing(s, 'side', dir[0]);
+          else this.setNpcFacing(s, dir[1] < 0 ? 'up' : 'down', 0);
+          if (this.cameoHasWalk[s.npcSheet]) s.play(`${s.npcSheet}-walk-${st.facing}`, true);
+          st.nextAt = time + Phaser.Math.Between(C5_NPC_WALK_MIN_MS, C5_NPC_WALK_MAX_MS);
+        }
+      } else if (st.moving && this.cameoHasWalk[s.npcSheet]) {
+        s.play(`${s.npcSheet}-walk-${st.facing}`, true);
+      }
+
+      s.setDepth(s.y); // y-sorted while moving
+    });
   }
 
   // Task list for the HUD counter / objectives modal: the 4 plaza landmarks
@@ -3373,9 +3520,8 @@ class Chapter5Scene extends Phaser.Scene {
   }
 
   // Closest NPC within INTERACT_RADIUS (the shared reach from Chapter1Scene.js
-  // that the landmarks and Chapters 1-3 use too). Static bodies keep the
-  // player ~25-68px from an NPC's centre depending on the side they approach
-  // from, so 80 reaches from every direction.
+  // that the landmarks and Chapters 1-3 use too). Reads each sprite's current
+  // position, so it follows the wandering cameo NPCs automatically.
   nearestTalkNpc() {
     if (!this.npcTalks) return null;
     const p = this.player;
@@ -3758,11 +3904,6 @@ class Chapter5Scene extends Phaser.Scene {
       card.matched = true;
       target.filled = true;
       card.style.left = `${target.cx - cardW / 2}px`;
-      // Rows are only gapY (82px) apart and a slot is already 72px tall, so
-      // there's only ~10px of genuinely free space between one slot and the
-      // next. Docking the still-full-size card there (the old -50 offset)
-      // meant it dipped ~16px into its own slot's text AND ~34px into the
-      // slot above it - "blocking the [description] boxes", per the report.
       // Once matched the card no longer needs to be a full drag target, so
       // shrink it to a compact tag first, then park it just above its own
       // slot with a small deliberate overlap (like the dialogue box's name
@@ -4048,10 +4189,10 @@ class Chapter5Scene extends Phaser.Scene {
     this.showQuizQuestion();
   }
 
-showQuizQuestion() {
-     const { width, height } = this.scale;
-     const qData = shuffleQuizOptions(this.quizQuestions[this.quizIndex]);
-     const container = this.add.container(0, 0).setDepth(10500).setScrollFactor(0);
+  showQuizQuestion() {
+    const { width, height } = this.scale;
+    const qData = shuffleQuizOptions(this.quizQuestions[this.quizIndex]);
+    const container = this.add.container(0, 0).setDepth(10500).setScrollFactor(0);
 
     const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.45).setInteractive().setScrollFactor(0);
     const panel = this.add.rectangle(width / 2, height / 2, 540, 380, 0xfff8e7, 1).setStrokeStyle(4, 0x9c3b2e);
@@ -4168,8 +4309,8 @@ showQuizQuestion() {
   }
 
   showJournalReward() {
-const { width, height } = this.scale;
-     const container = this.add.container(0, 0).setDepth(10500).setScrollFactor(0);
+    const { width, height } = this.scale;
+    const container = this.add.container(0, 0).setDepth(10500).setScrollFactor(0);
     const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.55).setInteractive().setScrollFactor(0);
     const panel = this.add.rectangle(width / 2, height / 2, 460, 240, 0xfff8e7, 1).setStrokeStyle(4, 0x9c3b2e);
     const title = this.add.text(width / 2, height / 2 - 80, 'Journal Page #5 Unlocked!', {
@@ -4291,6 +4432,11 @@ const { width, height } = this.scale;
     // background life, so they keep paddling even while the player is
     // reading a popup.
     this.updateAmbientDucks(time);
+
+    // Cameo NPCs wander too, and freeze themselves while locked / when the
+    // player is close (see updateCameoNpcs). Runs before the locked-return
+    // below so it keeps ticking during dialogue.
+    this.updateCameoNpcs(time);
 
     // Ask Well is the one real-time phase in this chapter: the player
     // actually walks the plaza to catch a spark, so it runs alongside the
