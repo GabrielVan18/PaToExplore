@@ -389,7 +389,31 @@ class Chapter1Scene extends Phaser.Scene {
     }).setOrigin(0.5).setVisible(false).setDepth(100000);
     this.returnFlag = this.add.text(this.lola.x, this.lola.y - 60, '❗', { fontSize: 26 })
       .setOrigin(0.5).setVisible(false);
+```javascript
+// --- Lola Nena automatic movement ---
+this.lolaStartX = this.lola.x;
+this.lolaLeftX = this.lolaStartX - 80;
+this.lolaRightX = this.lolaStartX + 80;
 
+this.lolaMovingRight = true;
+
+this.lolaPatrolTween = this.tweens.add({
+    targets: this.lola,
+    x: this.lolaRightX,
+    duration: 3000,
+    ease: 'Linear',
+    yoyo: true,
+    repeat: -1,
+    onYoyo: () => {
+        this.lolaMovingRight = false;
+        this.lola.setFlipX(true);
+    },
+    onRepeat: () => {
+        this.lolaMovingRight = true;
+        this.lola.setFlipX(false);
+    }
+});
+```
     // --- 5 river-life interactables to find ---
     // Pulled from CHAPTER1_MAP_DATA.objects by key, so position/color/info
     // all come straight from what was placed in the map editor.
