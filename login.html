@@ -164,6 +164,7 @@
     .btn:hover  { filter: brightness(1.12); }
     .btn:active { transform: translateY(2px); }
     .btn:focus-visible { outline: 3px solid var(--cream); outline-offset: 2px; }
+    .btn:disabled { opacity: .6; cursor: wait; filter: none; }
 
     .btn-primary {
         margin-top: 8px;
@@ -219,6 +220,13 @@
     </main>
 
     <script>
+        // ============================================================
+        // PALITAN ITO ng URL ng PHP backend mo (walang "/" sa dulo).
+        // Halimbawa: 'https://patoexplore.infinityfreeapp.com'
+        // Kung sa XAMPP ka lang nagte-test, gawing '' (walang laman).
+        // ============================================================
+        const API_BASE = 'https://YOUR-BACKEND-URL';
+
         let isRegistering = false;
 
         // Kung hindi ma-load ang banner image, gumamit ng CSS wood fallback
@@ -249,22 +257,37 @@
             const user = document.getElementById('username').value.trim();
             const pass = document.getElementById('password').value.trim();
             const msg = document.getElementById('message');
+            const btn = document.getElementById('submit-btn');
 
             if (!user || !pass) {
                 msg.innerText = "Please fill in all fields!";
                 return;
             }
 
+            if (btn.disabled) return; // iwas double submit
+
             const actionType = isRegistering ? 'register' : 'login';
+            btn.disabled = true;
+            msg.innerText = "";
 
             try {
-                const response = await fetch('login_backend.php', {
+                const response = await fetch(`${API_BASE}/login_backend.php`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include', // para ma-save ang session cookie
                     body: JSON.stringify({ action: actionType, username: user, password: pass })
                 });
 
-                const result = await response.json();
+                // Basahin muna bilang text para hindi mag-crash kung hindi JSON ang sagot
+                const text = await response.text();
+                let result;
+                try {
+                    result = JSON.parse(text);
+                } catch (parseError) {
+                    console.error('Hindi JSON ang sagot ng server:', response.status, text);
+                    msg.innerText = `Server error (HTTP ${response.status}). Check kung tama ang backend URL.`;
+                    return;
+                }
 
                 if (result.status === 'success') {
                     if (isRegistering) {
@@ -284,6 +307,8 @@
             } catch (error) {
                 console.error('Error:', error);
                 msg.innerText = 'Server connection error!';
+            } finally {
+                btn.disabled = false;
             }
         }
     </script>
